@@ -1,0 +1,1257 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top" href="<?= ScriptApp.getService().getUrl() ?>">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>📊 受付データ検索</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      color: #333;
+    }
+    
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    
+    .header {
+      background: white;
+      border-radius: 15px;
+      padding: 30px;
+      margin-bottom: 20px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+      text-align: center;
+    }
+    
+    .header h1 {
+      color: #333;
+      font-size: 28px;
+      margin-bottom: 10px;
+    }
+    .version-badge {
+      display: inline-block;
+      margin-left: 10px;
+      padding: 4px 8px;
+      font-size: 12px;
+      color: #2563eb;
+      background: #e8f0fe;
+      border: 1px solid #c7d2fe;
+      border-radius: 999px;
+      vertical-align: middle;
+    }
+    
+    .header p {
+      color: #666;
+      font-size: 16px;
+    }
+    
+    .controls {
+      background: white;
+      border-radius: 15px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 15px;
+      align-items: center;
+      justify-content: space-between;
+    }
+    
+    .search-box {
+      flex: 1;
+      min-width: 250px;
+      position: relative;
+    }
+    
+    .search-box input {
+      width: 100%;
+      padding: 12px 45px 12px 15px;
+      border: 2px solid #e1e8ed;
+      border-radius: 8px;
+      font-size: 14px;
+      background: #fafbfc;
+      transition: all 0.3s ease;
+    }
+    
+    .search-box input:focus {
+      outline: none;
+      border-color: #4285f4;
+      background: white;
+      box-shadow: 0 0 0 3px rgba(66, 133, 244, 0.1);
+    }
+    
+    .search-icon {
+      position: absolute;
+      right: 15px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: #666;
+      font-size: 16px;
+    }
+    
+    .btn {
+      padding: 12px 20px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      transition: all 0.3s ease;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .btn-primary {
+      background: linear-gradient(135deg, #4285f4, #34a853);
+      color: white;
+    }
+    
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(66, 133, 244, 0.3);
+    }
+    
+    .btn-secondary {
+      background: #f8f9fa;
+      color: #666;
+      border: 2px solid #e1e8ed;
+    }
+    
+    .btn-secondary:hover {
+      background: #e9ecef;
+      border-color: #adb5bd;
+    }
+    
+    .btn-danger {
+      background: linear-gradient(135deg, #dc3545, #c82333);
+      color: white;
+    }
+    
+    .btn-danger:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(220, 53, 69, 0.3);
+    }
+    
+    .data-container {
+      background: white;
+      border-radius: 15px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+      overflow: hidden;
+    }
+    
+    .data-header {
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      color: white;
+      padding: 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .data-title {
+      font-size: 20px;
+      font-weight: 600;
+    }
+    
+    .data-count {
+      background: rgba(255,255,255,0.2);
+      padding: 5px 12px;
+      border-radius: 20px;
+      font-size: 14px;
+    }
+    
+    .table-container {
+      overflow-x: auto;
+      max-height: 600px;
+      overflow-y: auto;
+    }
+    
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    
+    .data-table th {
+      background: #f8f9fa;
+      padding: 15px 12px;
+      text-align: left;
+      font-weight: 600;
+      color: #333;
+      border-bottom: 2px solid #e1e8ed;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    
+    .data-table td {
+      padding: 12px;
+      border-bottom: 1px solid #e1e8ed;
+      vertical-align: middle;
+    }
+    
+    .data-table tr:hover {
+      background: #f8f9fa;
+    }
+    
+    .action-buttons {
+      display: flex;
+      gap: 8px;
+    }
+    
+    .btn-sm {
+      padding: 6px 12px;
+      font-size: 12px;
+      min-width: auto;
+    }
+    
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: #666;
+    }
+    
+    .empty-state .icon {
+      font-size: 48px;
+      margin-bottom: 20px;
+      opacity: 0.5;
+    }
+    
+    .empty-state h3 {
+      margin-bottom: 10px;
+      color: #333;
+    }
+    
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: #666;
+    }
+    
+    .loading .spinner {
+      width: 40px;
+      height: 40px;
+      border: 4px solid #f3f3f3;
+      border-top: 4px solid #4285f4;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 20px;
+    }
+    
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 1000;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.5);
+      animation: fadeIn 0.3s ease;
+    }
+    
+    .modal.show {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .modal-content {
+      background: white;
+      border-radius: 15px;
+      padding: 30px;
+      max-width: 500px;
+      width: 90%;
+      max-height: 80vh;
+      overflow-y: auto;
+      animation: slideIn 0.3s ease;
+    }
+    
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    
+    @keyframes slideIn {
+      from { transform: translateY(-50px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+    
+    .form-group {
+      margin-bottom: 20px;
+    }
+    
+    .form-group label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 600;
+      color: #333;
+      font-size: 14px;
+    }
+    
+    .required {
+      color: #e74c3c;
+    }
+    
+    .form-group input,
+    .form-group textarea {
+      width: 100%;
+      padding: 12px 15px;
+      border: 2px solid #e1e8ed;
+      border-radius: 8px;
+      font-size: 14px;
+      transition: all 0.3s ease;
+      background: #fafbfc;
+    }
+    
+    .form-group input:focus,
+    .form-group textarea:focus {
+      outline: none;
+      border-color: #4285f4;
+      background: white;
+      box-shadow: 0 0 0 3px rgba(66, 133, 244, 0.1);
+    }
+    
+    .form-group textarea {
+      resize: vertical;
+      min-height: 80px;
+      font-family: inherit;
+    }
+    
+    .modal-buttons {
+      margin-top: 30px;
+      display: flex;
+      gap: 15px;
+      justify-content: flex-end;
+    }
+    
+    .alert {
+      padding: 12px 15px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      border-left: 4px solid;
+    }
+    
+    .alert-success {
+      background: #d4edda;
+      color: #155724;
+      border-left-color: #28a745;
+    }
+    
+    .alert-error {
+      background: #f8d7da;
+      color: #721c24;
+      border-left-color: #dc3545;
+    }
+    
+    @media (max-width: 768px) {
+      .container {
+        padding: 10px;
+      }
+      
+      .controls {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      
+      .search-box {
+        min-width: auto;
+      }
+      
+      .data-table {
+        font-size: 12px;
+      }
+      
+      .data-table th,
+      .data-table td {
+        padding: 8px 6px;
+      }
+      
+      .action-buttons {
+        flex-direction: column;
+      }
+      
+      .modal-content {
+        padding: 20px;
+        width: 95%;
+      }
+      
+      .modal-buttons {
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- ヘッダー -->
+    <div class="header">
+      <h1>📊 受付データ検索 <span class="version-badge">ver.20250830_102108</span></h1>
+      <p>受付データの検索と編集（下部に結果表示）</p>
+    </div>
+    
+    <!-- コントロール -->
+    <div class="controls">
+      <div class="search-box">
+        <input type="text" id="searchInput" placeholder="🔍 データを検索...">
+        <span class="search-icon">🔍</span>
+      </div>
+      <a class="btn btn-primary" href="?page=reception">📝 新規受付</a>
+      <button class="btn btn-secondary" onclick="loadData()">
+        🔄 更新
+      </button>
+      <button class="btn btn-secondary" onclick="showSpreadsheetInfo()">
+        📊 スプレッドシート情報
+      </button>
+      <button class="btn btn-secondary" onclick="testServerConnection()">
+        🔧 サーバー疎通テスト
+      </button>
+    </div>
+    
+    <!-- データ表示エリア -->
+    <div class="data-container">
+      <div class="data-header">
+        <div class="data-title">📋 受付データ一覧</div>
+        <div class="data-count" id="dataCount">-</div>
+      </div>
+      
+      <div id="dataContent">
+        <div class="loading">
+          <div class="spinner"></div>
+          <div>受付データを読み込み中...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div style="text-align:center; margin-top:12px; color:#666; font-size:12px;">
+    バージョン: ver.20250830_102108
+  </div>
+  
+  <!-- データ編集モーダル -->
+  <div id="editModal" class="modal">
+    <div class="modal-content">
+      <h3 id="modalTitle">📝 データ編集</h3>
+      <div id="alertArea"></div>
+      
+      <form id="dataForm">
+        <input type="hidden" id="editRowIndex" value="">
+        
+        
+        
+        <div class="modal-buttons">
+          <button type="button" class="btn btn-secondary" onclick="closeModal()">
+            ❌ キャンセル
+          </button>
+          <button type="button" class="btn btn-primary" onclick="saveData()">
+            💾 保存
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    let allData = [];
+    let filteredData = [];
+    
+    // 初期化
+    document.addEventListener('DOMContentLoaded', function() {
+      loadData();
+      
+      // 検索機能
+      document.getElementById('searchInput').addEventListener('input', function() {
+        filterData(this.value);
+      });
+    });
+    
+    // データを読み込み
+    function loadData() {
+      showLoading();
+      
+      // タイムアウト処理（30秒）
+      const timeoutId = setTimeout(() => {
+        showAlert('データの読み込みがタイムアウトしました。ページを再読み込みしてください。', 'error');
+        showEmptyState('タイムアウトエラー');
+      }, 30000);
+      
+      google.script.run
+        .withSuccessHandler((data) => {
+          clearTimeout(timeoutId);
+          onDataLoaded(data);
+        })
+        .withFailureHandler((error) => {
+          clearTimeout(timeoutId);
+          onLoadError(error);
+        })
+        .listReceptionIndex();
+    }
+    
+    // データ読み込み成功時
+    function onDataLoaded(data) {
+      console.log('Reception data loaded:', data);
+      console.log('Data type:', typeof data, 'Is array:', Array.isArray(data));
+      
+      // データの検証
+      if (!data || !Array.isArray(data)) {
+        console.error('Invalid data format received:', data);
+        showAlert('無効なデータ形式を受信しました', 'error');
+        showEmptyState('データ形式エラー');
+        return;
+      }
+      
+      allData = data;
+      filteredData = data;
+      renderData();
+      updateDataCount();
+    }
+    
+    // データ読み込みエラー時
+    function onLoadError(error) {
+      console.error('Load error details:', error);
+      
+      let errorMessage = 'データの読み込みに失敗しました';
+      if (error && error.message) {
+        errorMessage += ': ' + error.message;
+      } else if (typeof error === 'string') {
+        errorMessage += ': ' + error;
+      }
+      
+      showAlert(errorMessage, 'error');
+      
+      // デバッグ用のボタンを追加
+      const debugButton = '<button class="btn btn-secondary" onclick="loadDebugInfo()">🔧 デバッグ情報を表示</button>';
+      
+      document.getElementById('dataContent').innerHTML = `
+        <div class="empty-state">
+          <div class="icon">❌</div>
+          <h3>エラーが発生しました</h3>
+          <p>データの読み込み中にエラーが発生しました。</p>
+          <div style="margin-top: 20px;">
+            ${debugButton}
+          </div>
+        </div>
+      `;
+    }
+    
+    // データをレンダリング
+    function renderData() {
+      const contentDiv = document.getElementById('dataContent');
+      
+      // filteredDataの存在確認
+      if (!filteredData || !Array.isArray(filteredData)) {
+        console.error('filteredData is not valid:', filteredData);
+        showEmptyState('データの形式が正しくありません');
+        return;
+      }
+      
+      if (filteredData.length === 0) {
+        showEmptyState();
+        return;
+      }
+      
+      let html = `
+        <div class="table-container">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>🆔 ID</th>
+                <th>📅 受付日</th>
+                <th>🎯 対象</th>
+                <th>👤 担当</th>
+                <th>📍 区</th>
+                <th>☎ 問い合わせ</th>
+                <th>📚 相談種類</th>
+                <th>🛠 対応種類</th>
+                <th>📝 相談詳細</th>
+                <th>📅 作成</th>
+                <th>🔄 更新</th>
+                <th>⚙️ 操作</th>
+              </tr>
+            </thead>
+            <tbody>
+      `;
+      
+      filteredData.forEach((row, index) => {
+        // rowの存在確認
+        if (!row || !Array.isArray(row)) {
+          console.warn('Invalid row data at index', index, ':', row);
+          return;
+        }
+        
+        const originalIndex = allData.indexOf(row);
+        
+        // 各セルのデータを安全に処理
+        const id = escapeHtml(row[0] || '');
+        const date = escapeHtml(row[1] || '');
+        const target = escapeHtml(row[2] || '');
+        const assignee = escapeHtml(row[3] || '');
+        const ward = escapeHtml(row[4] || '');
+        const contact = escapeHtml(row[5] || '');
+        const consultTypes = escapeHtml(row[6] || '');
+        const responseTypes = escapeHtml(row[7] || '');
+        const details = escapeHtml(row[8] || '');
+        const createdAt = formatDateTime(row[9]);
+        const updatedAt = formatDateTime(row[10]);
+
+        html += `
+          <tr>
+            <td><strong>${id}</strong></td>
+            <td>${date}</td>
+            <td>${target}</td>
+            <td>${assignee}</td>
+            <td>${ward}</td>
+            <td>${contact}</td>
+            <td>${consultTypes}</td>
+            <td>${responseTypes}</td>
+            <td>${details}</td>
+            <td>${createdAt}</td>
+            <td>${updatedAt}</td>
+            <td>
+              <div class="action-buttons">
+                <button class="btn btn-primary btn-sm" onclick="openReception('${id}')">
+                  ✏️ 編集
+                </button>
+              </div>
+            </td>
+          </tr>
+        `;
+      });
+      
+      html += `
+            </tbody>
+          </table>
+        </div>
+      `;
+      
+      contentDiv.innerHTML = html;
+    }
+    
+    // フィールドのエイリアス（key = 内部名、value = 外部名の配列）
+    const DEFAULT_FIELD_ALIASES = {
+      id: ['id','ID','🆔'],
+      date: ['受付日','date','受付日時'],
+      target: ['対象','相談対象','target'],
+      assignee: ['担当','assignee'],
+      ward: ['区','ward'],
+      contact: ['問い合わせ','問い合わせ方法','contact'],
+      consult: ['相談種類','consultationTypes','相談'],
+      response: ['対応種類','responseTypes','対応'],
+      details: ['相談詳細','details','詳細'],
+      created: ['createdAt', '作成日時', '作成日', 'created'],
+      updated: ['updatedAt', '更新日時', '更新日'],
+    };
+
+    // 日時比較対象（正規化後のカノニカル名）
+    const DATE_FIELD_CANONICALS = new Set(['date','created', 'updated']);
+
+    // 配列形式のデータを連想配列形式に変換
+    function convertRowToObject(row) {
+      return {
+        id: row[0],
+        date: row[1] || '',
+        target: row[2] || '',
+        assignee: row[3] || '',
+        ward: row[4] || '',
+        contact: row[5] || '',
+        consult: row[6] || '',
+        response: row[7] || '',
+        details: row[8] || '',
+        created: row[9] || '',
+        updated: row[10] || ''
+      };
+    }
+
+    function openReception(id){
+      window.location.href = '?page=reception&id=' + encodeURIComponent(id);
+    }
+
+    // 高度検索機能（column-regex-filter.js から移植）
+    function compileQuery(input, opts) {
+      opts = opts || {};
+      var defaultFlags = opts.defaultFlags || 'i';
+      var normalize = opts.normalize !== false;
+
+      if (!input || typeof input !== 'string') {
+        return { clauses: [] };
+      }
+
+      var text = normalize ? normalizeText(input) : input;
+      var clauses = parseQuery(text);
+
+      clauses.forEach(function(clause) {
+        clause.conditions.forEach(function(cond) {
+          if (cond.type === 'regex' && cond.pattern) {
+            try {
+              var flags = cond.flags || defaultFlags;
+              cond.compiledRegex = new RegExp(cond.pattern, flags);
+            } catch (e) {
+              console.warn('Invalid regex pattern:', cond.pattern, e.message);
+              cond.compiledRegex = null;
+            }
+          }
+        });
+      });
+
+      return { clauses: clauses };
+    }
+
+    function parseQuery(text) {
+      var orParts = text.split(/\s+OR\s+/);
+      return orParts.map(function(part) {
+        var conditions = [];
+        var tokens = tokenize(part);
+        
+        tokens.forEach(function(token) {
+          if (token.field) {
+            var field = normalizeFieldName(token.field);
+            if (field) {
+              conditions.push({
+                type: token.isRegex ? 'regex' : (DATE_FIELD_CANONICALS.has(field) ? 'date' : 'text'),
+                field: field,
+                pattern: token.value,
+                operator: token.operator || '=',
+                flags: token.flags,
+                originalValue: token.value
+              });
+            }
+          } else {
+            conditions.push({
+              type: token.isRegex ? 'regex' : 'global',
+              pattern: token.value,
+              flags: token.flags
+            });
+          }
+        });
+        
+        return { conditions: conditions };
+      });
+    }
+
+    function tokenize(text) {
+      var tokens = [];
+      var regex = /(\w+):(>=|<=|>|<|=)?(?:\/(.+?)\/([gimuy]*)|"([^"]*)"|(\S+))|(?:\/(.+?)\/([gimuy]*)|"([^"]*)"|(\S+))/g;
+      var match;
+
+      while ((match = regex.exec(text)) !== null) {
+        if (match[1]) {
+          var field = match[1];
+          var operator = match[2] || '=';
+          var regexPattern = match[3];
+          var regexFlags = match[4];
+          var quotedValue = match[5];
+          var plainValue = match[6];
+          
+          tokens.push({
+            field: field,
+            operator: operator,
+            value: regexPattern || quotedValue || plainValue || '',
+            isRegex: !!regexPattern,
+            flags: regexFlags
+          });
+        } else {
+          var globalRegexPattern = match[7];
+          var globalRegexFlags = match[8];
+          var globalQuotedValue = match[9];
+          var globalPlainValue = match[10];
+          
+          tokens.push({
+            value: globalRegexPattern || globalQuotedValue || globalPlainValue || '',
+            isRegex: !!globalRegexPattern,
+            flags: globalRegexFlags
+          });
+        }
+      }
+
+      return tokens;
+    }
+
+    function normalizeFieldName(fieldName) {
+      var lower = fieldName.toLowerCase();
+      for (var canonical in DEFAULT_FIELD_ALIASES) {
+        var aliases = DEFAULT_FIELD_ALIASES[canonical];
+        for (var i = 0; i < aliases.length; i++) {
+          if (aliases[i].toLowerCase() === lower) {
+            return canonical;
+          }
+        }
+      }
+      return null;
+    }
+
+    function normalizeText(text) {
+      return text.normalize('NFKC');
+    }
+
+    function filterRows(rows, compiled, opts) {
+      opts = opts || {};
+      
+      if (!compiled.clauses || compiled.clauses.length === 0) {
+        return rows;
+      }
+
+      return rows.filter(function(row) {
+        var obj = convertRowToObject(row);
+        return compiled.clauses.some(function(clause) {
+          return clause.conditions.every(function(cond) {
+            return matchCondition(obj, cond);
+          });
+        });
+      });
+    }
+
+    function matchCondition(obj, cond) {
+      if (cond.type === 'global') {
+        return Object.values(obj).some(function(value) {
+          if (value == null) return false;
+          var str = String(value);
+          if (cond.compiledRegex) {
+            return cond.compiledRegex.test(str);
+          } else {
+            return str.toLowerCase().includes(cond.pattern.toLowerCase());
+          }
+        });
+      }
+
+      var fieldValue = obj[cond.field];
+      if (fieldValue == null) return false;
+
+      if (cond.type === 'date') {
+        return compareDates(fieldValue, cond.pattern, cond.operator);
+      }
+
+      var str = String(fieldValue);
+      if (cond.compiledRegex) {
+        return cond.compiledRegex.test(str);
+      } else {
+        return str.toLowerCase().includes(cond.pattern.toLowerCase());
+      }
+    }
+
+    function compareDates(fieldValue, pattern, operator) {
+      try {
+        var fieldDate = new Date(fieldValue);
+        var patternDate = new Date(pattern);
+        
+        if (isNaN(fieldDate.getTime()) || isNaN(patternDate.getTime())) {
+          return false;
+        }
+
+        switch (operator) {
+          case '>=': return fieldDate >= patternDate;
+          case '<=': return fieldDate <= patternDate;
+          case '>': return fieldDate > patternDate;
+          case '<': return fieldDate < patternDate;
+          case '=':
+          default: return fieldDate.getTime() === patternDate.getTime();
+        }
+      } catch (e) {
+        return false;
+      }
+    }
+
+    // 検索フィルタリング（高度検索対応版）
+    function filterData(searchTerm) {
+      if (!searchTerm.trim()) {
+        filteredData = allData;
+      } else {
+        const compiled = compileQuery(searchTerm, { defaultFlags: 'i', normalize: true });
+        filteredData = filterRows(allData, compiled);
+      }
+      renderData();
+      updateDataCount();
+    }
+    
+    // データ件数を更新
+    function updateDataCount() {
+      const countElement = document.getElementById('dataCount');
+      countElement.textContent = `${filteredData.length} / ${allData.length} 件`;
+    }
+    
+    // ローディング表示
+    function showLoading() {
+      document.getElementById('dataContent').innerHTML = `
+        <div class="loading">
+          <div class="spinner"></div>
+          <div>データを読み込み中...</div>
+        </div>
+      `;
+    }
+    
+    // 空状態表示
+    function showEmptyState(message = 'データがありません') {
+      document.getElementById('dataContent').innerHTML = `
+        <div class="empty-state">
+          <div class="icon">📂</div>
+          <h3>${message}</h3>
+          <p>「新規追加」ボタンから最初のデータを登録してください</p>
+        </div>
+      `;
+    }
+    
+    // 新規追加モーダルを表示
+    function showAddModal() {
+      document.getElementById('modalTitle').textContent = '➕ 新規データ追加';
+      document.getElementById('editRowIndex').value = '';
+      resetForm();
+      showModal();
+    }
+    
+    // 編集モーダルを表示
+    function showEditModal(index) {
+      const data = allData[index];
+      document.getElementById('modalTitle').textContent = '✏️ データ編集';
+      document.getElementById('editRowIndex').value = index;
+      
+      // 受付データ以外の編集フィールドは廃止しました
+      
+      showModal();
+    }
+    
+    // モーダルを表示
+    function showModal() {
+      document.getElementById('editModal').classList.add('show');
+      clearAlert();
+    }
+    
+    // モーダルを閉じる
+    function closeModal() {
+      document.getElementById('editModal').classList.remove('show');
+    }
+    
+    // フォームをリセット
+    function resetForm() {
+      document.getElementById('dataForm').reset();
+    }
+    
+    // データを保存
+    function saveData() {
+      // この画面での編集は無効化されています（受付データ専用へ移行）
+      showAlert('この画面での編集は無効化されています（受付データをご利用ください）', 'error');
+      return;
+      
+      // Set loading state
+      setLoadingState(true);
+      
+      // Collect form data（無効化）
+      const formData = {};
+      
+      const rowIndex = document.getElementById('editRowIndex').value;
+      
+      console.log('Starting save:', formData, 'rowIndex:', rowIndex);
+      
+      // Set timeout (30 seconds)
+      const timeoutId = setTimeout(() => {
+        setLoadingState(false);
+        showAlert('処理がタイムアウトしました。再度お試しください。', 'error');
+      }, 30000);
+      
+      if (rowIndex === '') {
+        // Add new data
+        console.log('Adding new data...');
+        google.script.run
+          .withSuccessHandler((result) => {
+            clearTimeout(timeoutId);
+            onSaveSuccess(result);
+          })
+          .withFailureHandler((error) => {
+            clearTimeout(timeoutId);
+            onSaveError(error);
+          })
+          .addNewData(formData);
+      } else {
+        // Update existing data
+        console.log('Updating data...');
+        google.script.run
+          .withSuccessHandler((result) => {
+            clearTimeout(timeoutId);
+            onSaveSuccess(result);
+          })
+          .withFailureHandler((error) => {
+            clearTimeout(timeoutId);
+            onSaveError(error);
+          })
+          .updateData(formData, parseInt(rowIndex) + 2);
+      }
+    }
+    
+    // Manage loading state
+    function setLoadingState(isLoading) {
+      const saveBtn = document.querySelector('.modal-buttons .btn-primary');
+      const modalContent = document.querySelector('.modal-content');
+      
+      if (isLoading) {
+        saveBtn.innerHTML = '💾 保存中...';
+        saveBtn.disabled = true;
+        modalContent.style.opacity = '0.7';
+        modalContent.style.pointerEvents = 'none';
+      } else {
+        saveBtn.innerHTML = '💾 保存';
+        saveBtn.disabled = false;
+        modalContent.style.opacity = '1';
+        modalContent.style.pointerEvents = 'auto';
+      }
+    }
+    
+    // Save success handler
+    function onSaveSuccess(message) {
+      console.log('Save success:', message);
+      setLoadingState(false);
+      showAlert(message, 'success');
+      setTimeout(() => {
+        closeModal();
+        loadData();
+      }, 1500);
+    }
+    
+    // Save error handler
+    function onSaveError(error) {
+      console.error('Save error:', error);
+      setLoadingState(false);
+      showAlert('保存中にエラーが発生しました: ' + (error.message || error), 'error');
+    }
+    
+    // 削除確認
+    function confirmDelete(index) {
+      const data = allData[index];
+      const label = `行 ${index+1}`;
+      if (confirm(`「${label}」を削除してもよろしいですか？\nこの操作は取り消せません。`)) {
+        google.script.run
+          .withSuccessHandler(onDeleteSuccess)
+          .withFailureHandler(onDeleteError)
+          .deleteData(index + 2); // ヘッダー分+1、0ベース調整+1
+      }
+    }
+    
+    // 削除成功時
+    function onDeleteSuccess(message) {
+      showAlert(message, 'success');
+      loadData();
+    }
+    
+    // 削除エラー時
+    function onDeleteError(error) {
+      showAlert('削除中にエラーが発生しました: ' + error.message, 'error');
+    }
+    
+    // デバッグ情報を読み込み
+    function loadDebugInfo() {
+      showLoading();
+      
+      google.script.run
+        .withSuccessHandler((debugInfo) => {
+          console.log('Debug info:', debugInfo);
+          
+          const formattedInfo = `
+            <div class="debug-info" style="text-align: left; font-family: monospace; font-size: 12px; background: #f5f5f5; padding: 15px; border-radius: 5px; margin: 10px; white-space: pre-wrap;">
+              ${JSON.stringify(debugInfo, null, 2)}
+            </div>
+          `;
+          
+          document.getElementById('dataContent').innerHTML = `
+            <div class="empty-state">
+              <div class="icon">🔧</div>
+              <h3>デバッグ情報</h3>
+              ${formattedInfo}
+              <div style="margin-top: 20px;">
+                <button class="btn btn-secondary" onclick="loadData()">🔄 再試行</button>
+              </div>
+            </div>
+          `;
+        })
+        .withFailureHandler((error) => {
+          console.error('Debug info error:', error);
+          showAlert('デバッグ情報の取得に失敗しました: ' + (error.message || error), 'error');
+        })
+        .debugGetAllData();
+    }
+    
+    // アラート表示
+    function showAlert(message, type) {
+      const alertArea = document.getElementById('alertArea') || document.createElement('div');
+      
+      if (!document.getElementById('alertArea')) {
+        alertArea.id = 'alertArea';
+        document.querySelector('.container').insertBefore(alertArea, document.querySelector('.data-container'));
+      }
+      
+      const className = type === 'success' ? 'alert-success' : 'alert-error';
+      alertArea.innerHTML = `<div class="alert ${className}">${message}</div>`;
+      
+      if (type === 'error') {
+        setTimeout(clearAlert, 15000);
+      }
+    }
+    
+    // アラートクリア
+    function clearAlert() {
+      document.getElementById('alertArea').innerHTML = '';
+    }
+    
+    // HTMLエスケープ
+    function escapeHtml(text) {
+      // null, undefined, 数値などを文字列に変換
+      if (text === null || text === undefined) {
+        return '';
+      }
+      
+      // 数値やその他のタイプを文字列に変換
+      const textStr = String(text);
+      
+      const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+      };
+      return textStr.replace(/[&<>"']/g, function(m) { return map[m]; });
+    }
+    
+    // 日時フォーマット
+    function formatDateTime(dateValue) {
+      if (!dateValue) return '';
+      
+      try {
+        const date = new Date(dateValue);
+        if (isNaN(date.getTime())) return '';
+        
+        return date.toLocaleString('ja-JP', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+      } catch (e) {
+        return '';
+      }
+    }
+    
+    // スプレッドシート情報を表示
+    function showSpreadsheetInfo() {
+      google.script.run
+        .withSuccessHandler((info) => {
+          let infoHtml = '<h3>📊 スプレッドシート情報</h3>';
+          
+          if (info.spreadsheetInfo && info.spreadsheetInfo.id) {
+            infoHtml += `
+              <div style="margin: 15px 0; padding: 15px; background: #f8f9fa; border-radius: 8px;">
+                <p><strong>ID:</strong> ${info.spreadsheetInfo.id}</p>
+                <p><strong>名前:</strong> ${info.spreadsheetInfo.name}</p>
+                <p><strong>URL:</strong> <a href="${info.spreadsheetInfo.url}" target="_blank">スプレッドシートを開く</a></p>
+                <p><strong>シート一覧:</strong> ${info.spreadsheetInfo.sheets.join(', ')}</p>
+              </div>
+            `;
+          } else {
+            infoHtml += '<p>スプレッドシート情報が取得できませんでした。</p>';
+          }
+          
+          // モーダルを作成して表示
+          const modal = document.createElement('div');
+          modal.className = 'modal show';
+          modal.innerHTML = `
+            <div class="modal-content">
+              ${infoHtml}
+              <div class="modal-buttons">
+                <button type="button" class="btn btn-secondary" onclick="this.closest('.modal').remove()">
+                  ❌ 閉じる
+                </button>
+              </div>
+            </div>
+          `;
+          
+          // モーダル外クリックで閉じる
+          modal.addEventListener('click', function(e) {
+            if (e.target === modal) {
+              modal.remove();
+            }
+          });
+          
+          document.body.appendChild(modal);
+        })
+        .withFailureHandler((error) => {
+          showAlert('スプレッドシート情報の取得に失敗しました: ' + (error.message || error), 'error');
+        })
+        .debugSpreadsheetInfo();
+    }
+    
+    // サーバー疎通テスト
+    function testServerConnection() {
+      console.log('=== CLIENT: Testing server connection ===');
+      
+      // シンプルなテスト
+      google.script.run
+        .withSuccessHandler((result) => {
+          console.log('=== CLIENT: Simple test success ===', result);
+          showAlert('シンプルテスト成功: ' + result, 'success');
+          
+          // pingテスト
+          google.script.run
+            .withSuccessHandler((pingResult) => {
+              console.log('=== CLIENT: Ping test success ===', pingResult);
+              showAlert('Pingテスト成功: ' + JSON.stringify(pingResult), 'success');
+              
+              // getAllDataSafeテスト
+              google.script.run
+                .withSuccessHandler((dataResult) => {
+                  console.log('=== CLIENT: getAllDataSafe test success ===', dataResult);
+                  showAlert('データ取得テスト結果: ' + (dataResult ? 'データあり' : 'null'), dataResult ? 'success' : 'error');
+                  
+                  // 詳細デバッグテスト
+                  google.script.run
+                    .withSuccessHandler((debugResult) => {
+                      console.log('=== CLIENT: Debug step test success ===', debugResult);
+                      showAlert('詳細デバッグ結果: ' + debugResult, 'success');
+                    })
+                    .withFailureHandler((error) => {
+                      console.error('=== CLIENT: Debug step test failed ===', error);
+                      showAlert('詳細デバッグ失敗: ' + (error.message || error), 'error');
+                    })
+                    .debugGetAllDataStep();
+                })
+                .withFailureHandler((error) => {
+                  console.error('=== CLIENT: getAllDataSafe test failed ===', error);
+                  showAlert('データ取得テスト失敗: ' + (error.message || error), 'error');
+                })
+                .getAllDataSafe();
+            })
+            .withFailureHandler((error) => {
+              console.error('=== CLIENT: Ping test failed ===', error);
+              showAlert('Pingテスト失敗: ' + (error.message || error), 'error');
+            })
+            .pingTest();
+        })
+        .withFailureHandler((error) => {
+          console.error('=== CLIENT: Simple test failed ===', error);
+          showAlert('シンプルテスト失敗: ' + (error.message || error), 'error');
+        })
+        .simpleTest();
+    }
+    
+    // モーダル外クリックで閉じる
+    document.getElementById('editModal').addEventListener('click', function(e) {
+      if (e.target === this) {
+        closeModal();
+      }
+    });
+  </script>
+</body>
+</html>

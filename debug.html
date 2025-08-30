@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🔧 デバッグページ</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      background: white;
+      padding: 30px;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    .btn {
+      background: #4285f4;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 5px;
+      cursor: pointer;
+      margin: 5px;
+      font-size: 14px;
+    }
+    .btn:hover {
+      background: #3367d6;
+    }
+    .btn:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+    .log {
+      background: #f8f9fa;
+      border: 1px solid #e9ecef;
+      padding: 15px;
+      border-radius: 5px;
+      margin: 10px 0;
+      font-family: monospace;
+      font-size: 12px;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    .success { color: #28a745; }
+    .error { color: #dc3545; }
+    .info { color: #17a2b8; }
+    .form-group {
+      margin: 15px 0;
+    }
+    .form-group label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: bold;
+    }
+    .form-group input {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔧 データ管理アプリ - デバッグページ</h1>
+    <p>問題の原因を特定するためのテストページです。</p>
+    
+    <h2>📊 基本機能テスト</h2>
+    <div>
+      <button class="btn" onclick="testGetAllData()">📋 データ取得テスト</button>
+      <button class="btn" onclick="testCreateSheet()">📄 シート作成テスト</button>
+      <button class="btn" onclick="clearLog()">🗑️ ログクリア</button>
+    </div>
+    
+    
+    
+    <h2>📝 ログ出力</h2>
+    <div id="logArea" class="log">
+      <div class="info">ログが表示されます...</div>
+    </div>
+    
+    <h2>📖 トラブルシューティング手順</h2>
+    <ol>
+      <li><strong>「データ取得テスト」</strong>をクリックして、基本機能が動作するか確認</li>
+      <li><strong>「シート作成テスト」</strong>でスプレッドシートが正常に作成されるか確認</li>
+      <li><strong>「テストデータ追加」</strong>で新規データ追加が動作するか確認</li>
+      <li>エラーが発生した場合、ログの内容を確認してください</li>
+    </ol>
+    
+    <h2>🔧 よくある問題と解決方法</h2>
+    <ul>
+      <li><strong>権限エラー</strong>: Google Apps Scriptの実行権限を確認してください</li>
+      <li><strong>スプレッドシートエラー</strong>: 新しいスプレッドシートが自動作成されます</li>
+      <li><strong>タイムアウト</strong>: 処理に時間がかかっている可能性があります</li>
+    </ul>
+  </div>
+
+  <script>
+    // ログ出力関数
+    function log(message, type = 'info') {
+      const logArea = document.getElementById('logArea');
+      const timestamp = new Date().toLocaleTimeString();
+      const className = type === 'success' ? 'success' : type === 'error' ? 'error' : 'info';
+      
+      logArea.innerHTML += `<div class="${className}">[${timestamp}] ${message}</div>`;
+      logArea.scrollTop = logArea.scrollHeight;
+      
+      console.log(`[${type.toUpperCase()}] ${message}`);
+    }
+    
+    // ログクリア
+    function clearLog() {
+      document.getElementById('logArea').innerHTML = '<div class="info">ログがクリアされました...</div>';
+    }
+    
+    // データ取得テスト
+    function testGetAllData() {
+      log('データ取得テストを開始...', 'info');
+      
+      google.script.run
+        .withSuccessHandler((result) => {
+          log(`データ取得成功: ${result.length}件のデータが見つかりました`, 'success');
+          if (result.length > 0) {
+            log(`最初のデータ: ${JSON.stringify(result[0])}`, 'info');
+          }
+        })
+        .withFailureHandler((error) => {
+          log(`データ取得エラー: ${error.message}`, 'error');
+        })
+        .getAllData();
+    }
+    
+    // シート作成テスト
+    function testCreateSheet() {
+      log('シート作成テストを開始...', 'info');
+      
+      google.script.run
+        .withSuccessHandler((result) => {
+          log(`シート作成成功: ${result}`, 'success');
+        })
+        .withFailureHandler((error) => {
+          log(`シート作成エラー: ${error.message}`, 'error');
+        })
+        .testCreateDataSheet();
+    }
+    
+    // 追加テストは廃止（受付データ専用へ移行）
+    
+    // 初期化
+    document.addEventListener('DOMContentLoaded', function() {
+      log('デバッグページが読み込まれました', 'success');
+      log('まず「データ取得テスト」を実行してください', 'info');
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top" href="<?= ScriptApp.getService().getUrl() ?>">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>📝 受付入力フォーム</title>
+  <style>
+    :root {
+      --bg: #f6f8fb;
+      --card: #ffffff;
+      --primary: #2f6feb;
+      --accent: #7c3aed;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --border: #e5e7eb;
+      --success: #16a34a;
+      --danger: #dc2626;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Apple Color Emoji, Noto Color Emoji, Arial, "Hiragino Kaku Gothic ProN", Meiryo, "游ゴシック体", YuGothic, sans-serif;
+      background: linear-gradient(120deg, #eef2ff, #fdf2f8);
+      color: var(--text);
+    }
+    .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+    .header { background: var(--card); border-radius: 16px; padding: 20px 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.06); margin-bottom: 18px; display:flex; justify-content:space-between; align-items:center; gap:16px; }
+    .title { font-size: 20px; font-weight: 700; }
+    .actions { display:flex; gap:10px; align-items:center; }
+    .btn { appearance: none; border: 0; border-radius: 10px; padding: 10px 14px; font-weight: 600; cursor: pointer; box-shadow: 0 6px 16px rgba(0,0,0,0.08); background: var(--card); color: var(--text); border: 1px solid var(--border); }
+    .btn.primary { background: linear-gradient(135deg, var(--primary), var(--accent)); color: #fff; border: 0; }
+    .btn.ghost { background: transparent; border: 1px solid var(--border); }
+    .grid { display: grid; grid-template-columns: 1fr; gap: 14px; }
+    @media (min-width: 900px) { .grid.cols-2 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+       grid-template-rows: auto auto;
+        align-items: start; }}
+    .card { background: var(--card); border-radius: 14px; padding: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.06); border: 1px solid var(--border); min-width: 0; overflow: hidden; }
+    .card h2 { margin: 0 0 10px; font-size: 16px; color: #2563eb; }
+    .field { margin-bottom: 10px; min-width: 0; }
+    .label { display:block; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+    input[type="text"], input[type="date"], input[type="time"], textarea, select { width: 100%; max-width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: #fafafa; font-size: 14px; box-sizing: border-box; }
+    textarea { min-height: 80px; resize: vertical; }
+    .row { display: grid; grid-template-columns: 1fr; gap: 10px; }
+    @media (min-width: 640px) { .row.cols-2 { grid-template-columns: 1fr 1fr; } .row.cols-3 { grid-template-columns: 1fr 1fr 1fr; }}
+    .chips { display:flex; flex-wrap: wrap; gap: 8px; }
+    .vlist { display:flex; flex-direction: column; gap:8px; }
+    .indent-1 { margin-left: 2ch; }
+    .indent-2 { margin-left: 4ch; }
+    .indent-3 { margin-left: 6ch; }
+    .chip { display:inline-flex; align-items:center; gap:6px; border:1px solid var(--border); border-radius:999px; padding:6px 10px; background:#fff; box-shadow: inset 0 -1px 0 rgba(0,0,0,0.03); font-size: 12px; overflow-wrap: anywhere; }
+    .muted { color: var(--muted); font-size: 12px; }
+    .divider { height:1px; background: var(--border); margin: 10px 0; }
+    .alert { padding: 10px 12px; border-radius: 10px; margin: 10px 0 0; font-size: 14px; border:1px solid var(--border); }
+    .alert.success { background:#ecfdf5; color:#065f46; border-color:#a7f3d0; }
+    .alert.error { background:#fef2f2; color:#991b1b; border-color:#fecaca; }
+    .jsonbox { background:#0b1021; color:#c7d2fe; border-radius: 12px; padding: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow:auto; font-size: 12px; max-height:240px; }
+  </style>
+  <script>
+    try { console.log('[reception_form] script start'); } catch(_e){}
+    // --- safe helpers to avoid blank screen ---
+    function esc(s){
+      try { return String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); } catch(e){ return String(s); }
+    }
+    function getQueryParam(name){
+      try {
+        if (typeof URLSearchParams !== 'undefined') {
+          const params = new URLSearchParams(location.search || '');
+          return params.get(name);
+        }
+      } catch(_e) {}
+      // Fallback manual parser
+      try {
+        const q = (location.search || '').replace(/^\?/,'');
+        if (!q) return null;
+        const map = {};
+        q.split('&').forEach(pair => {
+          if (!pair) return;
+          const idx = pair.indexOf('=');
+          const k = idx>=0 ? decodeURIComponent(pair.slice(0,idx)) : decodeURIComponent(pair);
+          const v = idx>=0 ? decodeURIComponent(pair.slice(idx+1)) : '';
+          if (!(k in map)) map[k] = v;
+        });
+        return Object.prototype.hasOwnProperty.call(map, name) ? map[name] : null;
+      } catch(_e2){ return null; }
+    }
+    function showFatalError(msg){
+      var root = document.getElementById('root');
+      if (root) {
+        root.innerHTML = '<div class="alert error">読み込み中にエラー: ' + esc(msg) + '</div>';
+      }
+    }
+    const contactMethods = ['電話','メール','FAX','窓口来庁','その他（具体的に）'];
+    const wards = ['中央区','北区','東区','白石区','豊平区','南区','西区','厚別区','手稲区','清田区','市外','不明'];
+    const assignees = ['自分','田中','佐藤','鈴木','高橋'];
+    const consultationTargets = ['A:生物','B:アセス','C:その他'];
+    // 仕様書に従った相談種類の階層構造
+    const consultationTypeOptions = {
+      // 共通3種（縦に並べる）
+      common: ['一般論的相談（法・制度含む）','個別案件相談','その他'],
+      // A:生物の時のみの子階層
+      general: ['個体数管理・削減','保護（個体数増加含む）','外来種関係','住み分け','その他'],
+      individual: ['生活環境被害（詳細選択肢あり）','生態系かく乱（詳細選択肢あり）','餌付け','傷病鳥獣（詳細選択肢あり）','その他'],
+      // 生活環境被害のサブカテゴリ
+      environmentalDamage: ['家屋侵入・家財破損','攻撃・威嚇・つきまとい','感染症・フン等汚損','騒音','家庭菜園被害','心理的嫌悪','その他'],
+      // 生態系かく乱のサブカテゴリ  
+      ecologicalDisturbance: ['鳥獣間感染症','過剰繁殖','希少種への影響','その他']
+    };
+    const responseTypeOptions = {
+      biological: ['委託での駆除対応','他の機関等を紹介・依頼（詳細選択肢あり）','行政指導等','情報提供・説明','その他'],
+      other: ['他の機関等を紹介・依頼（詳細選択肢あり）','行政指導等','情報提供・説明','その他']
+    };
+    const otherOrganizationsOptions = {
+      '紹介（詳細選択肢あり）': {
+        '区土木センター': [],
+        '区健康・子ども課': [],
+        '無料弁護士相談': [],
+        'PCO': [],
+        'その他（具体的に）': ['自由入力']
+      },
+      '依頼（詳細選択肢あり）': {
+        '区土木センター': [],
+        '区健康・子ども課': [],
+        'その他（具体的に）': ['自由入力']
+      }
+    };
+    const removalDetailOptions = ['キツネ罠設置','アライグマ罠設置','子ガラス捕獲','傷病鳥獣捕獲','その他（具体的に）'];
+    const biologicalCategories = {
+      '哺乳類（詳細選択肢あり）': ['キタキツネ','アライグマ','ヒグマ','エゾシカ','その他（具体的に）'],
+      '鳥類（詳細選択肢あり）': ['カラス','ハト','カモメ','スズメ','その他（具体的に）'],
+      '甲殻類・昆虫類（詳細選択肢あり）': ['ヒアリ','クビアカツヤカミキリムシ','ツヤハダゴマダラカミキリ','サビイロクワカミキリ','セイヨウオオマルハナバチ','ウチダザリガニ','アメリカザリガニ','その他（具体的に）'],
+      '爬虫類・両生類・魚類（詳細選択肢あり）': ['アメリカウシガエル','アズマヒキガエル（外来由来）','アズマヒキガエル','トノサマガエル','その他（具体的に）'],
+      '植物・菌類（詳細選択肢あり）': ['オオキンケイギク','オオハンゴウソウ','アメリカオニアザミ','バイカルハナウド','その他（具体的に）'],
+      '種不明': [],
+      '生物多様性全般': []
+    };
+    
+    // 子要素がないカテゴリを判定するヘルパー関数
+    function hasSubcategories(category) {
+      return biologicalCategories[category] && biologicalCategories[category].length > 0;
+    }
+
+      let state = {
+      id: null,
+      meta: {
+        receptionDate: new Date().toISOString().slice(0,10),
+        receptionTime: '',
+        assignee: '自分',
+        ward: '',
+        siteAddress: '',
+        contactMethod: '',
+        otherContactMethod: '',
+        contactSource: '',
+        contactInfo: ''
+      },
+        consultation: {
+          consultationTarget: '',
+          // 新しい階層構造に対応
+          consultationTypes: {
+            common: [], // 共通3種の選択状態
+            general: [], // 一般論的相談の子項目
+          individual: [], // 個別案件相談の子項目
+          environmentalDamage: [], // 生活環境被害のサブカテゴリ
+          ecologicalDisturbance: [], // 生態系かく乱のサブカテゴリ
+          injuredWildlife: [] // 傷病鳥獣の複数選択（保護/駆除/その他）
+          },
+        selectedCategories: [],
+        biologicalSpecies: {},
+        otherBiologyTexts: {},
+        subcategories: [],
+        details: ''
+      },
+      response: {
+        responseTypes: [],
+        otherOrganizations: {
+          introduceSelected: false,
+          requestSelected: false,
+          introduce: [],
+          request: [],
+          introduceDetails: {},
+          requestDetails: {}
+        },
+        otherOrganizationsOther: {
+          introduce: '',
+          request: ''
+        },
+        responseContent: '',
+        removalDetailOtherText: '',
+        followupItems: [ { needsFollowup:false, followupDate:'', followupTime:'', followupContent:'' } ],
+        remarks: '',
+        individualCaseTag: ''
+      },
+      _ui: { showJson: false, alert: null }
+    };
+
+    function setIn(path, value) {
+      let cur = state;
+      for (let i=0;i<path.length-1;i++) cur = cur[path[i]];
+      cur[path[path.length-1]] = value;
+      render();
+    }
+
+    // 入力中のスクロールジャンプを避けるための軽量更新（再描画しない）
+    function setInNoRender(path, value) {
+      let cur = state;
+      for (let i=0;i<path.length-1;i++) cur = cur[path[i]];
+      cur[path[path.length-1]] = value;
+    }
+
+    function onToggleArray(path, value, checked) {
+      let cur = state; for (let i=0;i<path.length;i++) cur = cur[path[i]];
+      const set = new Set(cur);
+      checked ? set.add(value) : set.delete(value);
+      setIn(path, Array.from(set));
+    }
+
+    function onToggleNestedArray(path, value, checked) {
+      // path = ['response','otherOrganizations','introduceDetails','区土木センター']
+      let cur = state;
+      for (let i=0; i<path.length-1; i++) {
+        if (!cur[path[i]]) cur[path[i]] = {};
+        cur = cur[path[i]];
+      }
+      const lastKey = path[path.length-1];
+      if (!cur[lastKey]) cur[lastKey] = [];
+      const set = new Set(cur[lastKey]);
+      checked ? set.add(value) : set.delete(value);
+      cur[lastKey] = Array.from(set);
+      render();
+    }
+
+    function onBioToggle(cat, species, checked) {
+      const map = { ...(state.consultation.biologicalSpecies||{}) };
+      if (!map[cat]) map[cat] = {};
+      
+      if (species === 'その他（具体的に）' || species === 'その他') {
+        // その他の場合は、チェック状態に関わらず文字列値で管理（後でotherBiologyTextsから設定）
+        if (checked) {
+          map[cat][species] = state.consultation.otherBiologyTexts?.[cat] || '';
+          // otherBiologyTextsも初期化
+          if (!state.consultation.otherBiologyTexts) state.consultation.otherBiologyTexts = {};
+          if (!state.consultation.otherBiologyTexts[cat]) state.consultation.otherBiologyTexts[cat] = '';
+        } else {
+          delete map[cat][species];
+          // チェック解除時はotherBiologyTextsも削除
+          if (state.consultation.otherBiologyTexts && state.consultation.otherBiologyTexts[cat]) {
+            delete state.consultation.otherBiologyTexts[cat];
+          }
+        }
+      } else {
+        // 通常の種の場合はフラグ値1を使用
+        if (checked) {
+          map[cat][species] = 1;
+        } else {
+          delete map[cat][species];
+        }
+      }
+      
+      // カテゴリに何も選択がない場合は削除
+      if (Object.keys(map[cat]).length === 0) {
+        delete map[cat];
+      }
+      
+      setIn(['consultation','biologicalSpecies'], map);
+    }
+
+    function onConsultationTargetChange(value) {
+      // 相談対象変更時に関連する選択をリセット
+      state.consultation.consultationTarget = value;
+      state.consultation.consultationTypes = {
+        common: [],
+        general: [],
+        individual: [],
+        environmentalDamage: [],
+        ecologicalDisturbance: [],
+        injuredWildlife: []
+      };
+      state.consultation.selectedCategories = [];
+      state.consultation.biologicalSpecies = {};
+      state.consultation.otherBiologyTexts = {};
+      state.consultation.subcategories = [];
+      state.response.otherOrganizations = {
+        introduceSelected: false,
+        requestSelected: false,
+        introduce: [],
+        request: [],
+        introduceDetails: {},
+        requestDetails: {}
+      };
+      state.response.otherOrganizationsOther = {
+        introduce: '',
+        request: ''
+      };
+      render();
+    }
+
+    function addFollowupIfNeeded(idx) {
+      const items = state.response.followupItems.slice();
+      const it = items[idx];
+      if (it && it.needsFollowup && it.followupDate && it.followupContent && items.length < 5 && !items[idx+1]) {
+        items.push({ needsFollowup:false, followupDate:'', followupTime:'', followupContent:'' });
+        // 確実に再描画するためsetInを使用
+        setIn(['response','followupItems'], items);
+      }
+    }
+
+    function flattenPaths(obj, prefix=[]) {
+      const out = [];
+      const isObj = v => v && typeof v === 'object' && !Array.isArray(v);
+      if (Array.isArray(obj)) {
+        obj.forEach((v,i)=>{ out.push(...flattenPaths(v, [...prefix, String(i+1)])); });
+      } else if (isObj(obj)) {
+        Object.keys(obj).forEach(k=>{ out.push(...flattenPaths(obj[k], [...prefix, k])); });
+      } else {
+        out.push([prefix, obj]);
+      }
+      return out;
+    }
+
+    function buildPayload() {
+      // 条件サニタイズ（reception_form.jsxの仕様準拠の簡略版）
+      const s = JSON.parse(JSON.stringify(state));
+      const t = s.consultation;
+      const r = s.response;
+      const currentConsultationTypes = t.consultationTypes.common || [];
+      if (t.consultationTarget !== 'A:生物') {
+        t.selectedCategories = []; t.biologicalSpecies = {}; t.otherBiologyTexts = {};
+      } else {
+        Object.keys(t.biologicalSpecies||{}).forEach(cat=>{ if(!t.selectedCategories.includes(cat)) delete t.biologicalSpecies[cat]; });
+        Object.keys(t.otherBiologyTexts||{}).forEach(cat=>{
+          const speciesObj = t.biologicalSpecies[cat]||{};
+          const hasOther = ('その他' in speciesObj) || ('その他（具体的に）' in speciesObj);
+          if(!t.selectedCategories.includes(cat) || !hasOther) delete t.otherBiologyTexts[cat];
+        });
+      }
+      // 新しい階層構造に対応した条件チェック
+      const hasEnvironmentalDamage = currentConsultationTypes.includes('個別案件相談') && 
+                                    t.consultationTypes.individual && 
+                                    t.consultationTypes.individual.includes('生活環境被害（詳細選択肢あり）');
+      if (!hasEnvironmentalDamage && !r.responseTypes.includes('委託での駆除対応')) {
+        t.subcategories = [];
+      }
+      if (!r.responseTypes.includes('委託での駆除対応') || !t.subcategories.includes('その他（具体的に）')) {
+        r.removalDetailOtherText = '';
+      }
+      // 相談種別（階層JSON）を仕様どおりに構築
+      const consultTypesNested = {};
+      // 一般論的相談（親フラグを常に保存）
+      if (currentConsultationTypes.includes('一般論的相談（法・制度含む）')) {
+        const gens = t.consultationTypes.general || [];
+        consultTypesNested['一般論的相談'] = { '（選択）': 1 };
+        gens.forEach(name => { consultTypesNested['一般論的相談'][name] = 1; });
+      }
+      // 個別案件相談（親フラグを常に保存）
+      if (currentConsultationTypes.includes('個別案件相談')) {
+        const indiv = t.consultationTypes.individual || [];
+        consultTypesNested['個別案件相談'] = consultTypesNested['個別案件相談'] || { '（選択）': 1 };
+        // 生活環境被害（親フラグを常に保存）
+        if (indiv.includes('生活環境被害（詳細選択肢あり）')) {
+          const envs = t.consultationTypes.environmentalDamage || [];
+          consultTypesNested['個別案件相談']['生活環境被害'] = { '（選択）': 1 };
+          envs.forEach(n => { consultTypesNested['個別案件相談']['生活環境被害'][n] = 1; });
+        }
+        // 生態系かく乱（親フラグを常に保存）
+        if (indiv.includes('生態系かく乱（詳細選択肢あり）')) {
+          const ecos = t.consultationTypes.ecologicalDisturbance || [];
+          consultTypesNested['個別案件相談']['生態系かく乱'] = { '（選択）': 1 };
+          ecos.forEach(n => { consultTypesNested['個別案件相談']['生態系かく乱'][n] = 1; });
+        }
+        // 傷病鳥獣（親フラグ＋複数選択の子）
+        if (indiv.includes('傷病鳥獣（詳細選択肢あり）')) {
+          consultTypesNested['個別案件相談']['傷病鳥獣'] = { '（選択）': 1 };
+          const iwList = t.consultationTypes.injuredWildlife || [];
+          iwList.forEach(iw => {
+            if (iw === '保護' || iw === '駆除' || iw === 'その他') {
+              consultTypesNested['個別案件相談']['傷病鳥獣'][iw] = 1;
+            }
+          });
+        }
+        // 葉（餌付け・その他）
+        ['餌付け','その他'].forEach(leaf => {
+          if (indiv.includes(leaf)) consultTypesNested['個別案件相談'][leaf] = 1;
+        });
+      }
+      // 共通の「その他」があればトップに保存（任意）
+      if (currentConsultationTypes.includes('その他')) {
+        consultTypesNested['その他'] = 1;
+      }
+
+      // ここから日本語キーのペイロードを構築
+      const sys = {
+        'ID': s.id || null,
+        '作成日時': new Date().toISOString(),
+        '更新日時': new Date().toISOString()
+      };
+      const meta = {
+        '受付日': s.meta.receptionDate || '',
+        '受付時刻': s.meta.receptionTime || '',
+        '担当者': s.meta.assignee || '',
+        '病棟': s.meta.ward || '',
+        '現場住所': s.meta.siteAddress || '',
+        '連絡方法': s.meta.contactMethod || '',
+        'その他連絡方法': s.meta.otherContactMethod || '',
+        '問い合わせ元': s.meta.contactSource || '',
+        '問い合わせ元連絡先': s.meta.contactInfo || ''
+      };
+      const consult = {
+        '相談対象': t.consultationTarget || '',
+        '相談種別': consultTypesNested,
+        '生物カテゴリ': t.selectedCategories || [],
+        '生物種': t.biologicalSpecies || {},
+        '生物種その他記述': t.otherBiologyTexts || {},
+        '詳細サブカテゴリ': t.subcategories || [],
+        '詳細': t.details || ''
+      };
+      const resp = {
+        '対応種別': r.responseTypes || [],
+        '他の機関等': {
+          'を紹介選択': r.otherOrganizations.introduceSelected || false,
+          'に対応依頼選択': r.otherOrganizations.requestSelected || false,
+          'を紹介': r.otherOrganizations.introduce || [],
+          'に対応依頼': r.otherOrganizations.request || [],
+          'を紹介詳細': r.otherOrganizations.introduceDetails || {},
+          'に対応依頼詳細': r.otherOrganizations.requestDetails || {}
+        },
+        '他の機関等その他': {
+          'を紹介': r.otherOrganizationsOther.introduce || '',
+          'に対応依頼': r.otherOrganizationsOther.request || ''
+        },
+        '対応内容': r.responseContent || '',
+        '駆除対応詳細その他': r.removalDetailOtherText || '',
+        '追加対応': (r.followupItems || []).map(it => ({
+          '要追加対応': !!it.needsFollowup,
+          '対応日': it.followupDate || '',
+          '対応時刻': it.followupTime || '',
+          '追加対応内容': it.followupContent || ''
+        })),
+        '備考': r.remarks || '',
+        '個別案件タグ': r.individualCaseTag || ''
+      };
+      return { 'システム': sys, 'メタ': meta, '相談': consult, '対応': resp };
+    }
+
+    function save() {
+      try { console.log('[reception_form] save() called'); } catch(_e){}
+      const payload = buildPayload();
+      const show = (msg, type) => { state._ui.alert = { msg, type }; render(); };
+      document.getElementById('saveBtn').disabled = true;
+      google.script.run
+        .withSuccessHandler(res => { 
+          try { if (res && res.id != null) state.id = res.id; } catch(e){}
+          show(res && res.message ? res.message : '保存しました', 'success'); 
+          document.getElementById('saveBtn').disabled = false; 
+        })
+        .withFailureHandler(err => { console.error(err); show('保存に失敗: ' + (err && err.message ? err.message : err), 'error'); document.getElementById('saveBtn').disabled = false; })
+        .saveReceptionData(payload);
+    }
+
+    function render() {
+      try { console.log('[reception_form] render: start'); } catch(_e){}
+      const root = document.getElementById('root');
+      // Preserve current scroll position to avoid jump-to-top on re-render
+      const prevScrollY = (window && (window.scrollY || window.pageYOffset)) || (document.documentElement && document.documentElement.scrollTop) || 0;
+      const t = state.consultation.consultationTarget;
+      // 基本の相談種類は常に共通3種類のみ
+      const consultTypes = consultationTypeOptions.common;
+      const responseTypes = t==='A:生物' ? responseTypeOptions.biological : responseTypeOptions.other;
+      const renderConsultationTypes = state.consultation.consultationTypes.common || [];
+
+      root.innerHTML = `
+        <div class="header">
+          <div class="title">📝 受付入力フォーム</div>
+          <div class="actions">
+            <button class="btn ghost" onclick="window.location.href='?';">← 一覧へ</button>
+            <button id="saveBtn" class="btn primary" onclick="save()">💾 保存</button>
+          </div>
+        </div>
+
+        
+          <div class="card">
+            <h2>受付メタ情報</h2>
+            <div class="row cols-3">
+              <div class="field"><span class="label">受付日</span><input type="date" value="${state.meta.receptionDate}" oninput="setIn(['meta','receptionDate'], this.value)"></div>
+              <div class="field"><span class="label">受付時刻</span><input type="time" value="${state.meta.receptionTime}" oninput="setIn(['meta','receptionTime'], this.value)"></div>
+              <div class="field"><span class="label">担当</span>
+                <select onchange="setIn(['meta','assignee'], this.value)">${assignees.map(a=>`<option ${state.meta.assignee===a?'selected':''}>${a}</option>`).join('')}</select>
+              </div>
+            </div>
+            <div class="row cols-2">
+              <div class="field"><span class="label">問い合わせ方法</span>
+                <div class="chips">
+                  ${contactMethods.map(m=>`<label class="chip"><input type="radio" name="contact" value="${m}" ${state.meta.contactMethod===m?'checked':''} onchange="setIn(['meta','contactMethod'], this.value)">${m}</label>`).join('')}
+                </div>
+                ${state.meta.contactMethod==='その他（具体的に）' ? `<input type="text" placeholder="その他の方法" value="${state.meta.otherContactMethod||''}" oninput="setInNoRender(['meta','otherContactMethod'], this.value)">` : ''}
+              </div>
+              <div class="field"><span class="label">区</span>
+                <div class="chips">${wards.map(w=>`<label class="chip"><input type="radio" name="ward" value="${w}" ${state.meta.ward===w?'checked':''} onchange="setIn(['meta','ward'], this.value)">${w}</label>`).join('')}</div>
+              </div>
+            </div>
+              <div class="row cols-2">
+              <div class="field"><span class="label">問い合わせ元</span><textarea oninput="setInNoRender(['meta','contactSource'], this.value)">${state.meta.contactSource||''}</textarea></div>
+              <div class="field"><span class="label">問い合わせ元への連絡先</span><textarea placeholder="電話・メール等" oninput="setInNoRender(['meta','contactInfo'], this.value)">${state.meta.contactInfo||''}</textarea></div>
+            </div>
+            <div class="field"><span class="label">現場住所等</span><textarea oninput="setInNoRender(['meta','siteAddress'], this.value)">${state.meta.siteAddress||''}</textarea></div>
+          </div>
+
+        <div class="grid cols-2">
+          <div class="card">
+            <h2>相談ブロック</h2>
+            <div class="field"><span class="label">相談対象</span>
+              <div class="chips">${consultationTargets.map(v=>`<label class="chip"><input type="radio" name="target" value="${v}" ${state.consultation.consultationTarget===v?'checked':''} onchange="onConsultationTargetChange(this.value); console.log('🎯 Target change:', this.value)">${v}</label>`).join('')}
+              </div>
+            </div>
+            ${t==='A:生物' ? `
+              <div class="field"><span class="label">生物カテゴリ詳細（複数選択可）</span>
+                <div class="vlist">
+                  ${Object.keys(biologicalCategories).map(cat=>`
+                    <div>
+                      <label class="chip"><input type="checkbox" value="${cat}" ${(state.consultation.selectedCategories||[]).includes(cat)?'checked':''} onchange="onToggleArray(['consultation','selectedCategories'], this.value, this.checked); console.log('🔧 Category toggle:', this.value, this.checked)">${cat}</label>
+                      ${ (state.consultation.selectedCategories||[]).includes(cat) && hasSubcategories(cat) ? `
+                        <div class="field indent-1"><span class="label">${cat} の生物カテゴリ詳細（複数選択可）</span>
+                          <div class="chips">${biologicalCategories[cat].map(sp=>`<label class="chip"><input type="checkbox" value="${sp}" ${Object.prototype.hasOwnProperty.call(state.consultation.biologicalSpecies[cat]||{}, sp) ? 'checked' : ''} onchange="onBioToggle('${cat}','${sp}', this.checked); console.log('🐾 Bio toggle:', '${cat}', '${sp}', this.checked)">${sp}</label>`).join('')}
+                          </div>
+                        </div>
+                        ${(() => {
+                          const speciesObj = state.consultation.biologicalSpecies[cat]||{};
+                          const hasOther = ('その他（具体的に）' in speciesObj) || ('その他' in speciesObj);
+                          return hasOther ? `<div class=\"field indent-1\"><span class=\"label\">${cat} その他（具体的に）</span><input type=\"text\" value=\"${(state.consultation.otherBiologyTexts||{})[cat]||''}\" oninput=\"(()=>{ const map={...(state.consultation.otherBiologyTexts||{})}; map['${cat}']=this.value; setInNoRender(['consultation','otherBiologyTexts'], map); console.log('📝 Other text input:', '${cat}', this.value); }).call(this)\"></div>` : '';
+                        })()}
+                      `: ''}
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+            ` : ''}
+            ${t ? `
+            <div class="field"><span class="label">相談種類</span>
+              <div class="vlist">
+                ${consultTypes.map(opt=>`
+                  <div>
+                    <label class="chip"><input type="checkbox" value="${opt}" ${renderConsultationTypes.includes(opt)?'checked':''} onchange="onToggleArray(['consultation','consultationTypes','common'], this.value, this.checked)">${opt}</label>
+                    ${t==='A:生物' && opt==='一般論的相談（法・制度含む）' && renderConsultationTypes.includes(opt) ? `
+                      <div class="field indent-1"><span class="label">一般論的相談 詳細（複数選択可）</span>
+                        <div class="vlist">${consultationTypeOptions.general.map(child=>`<label class="chip"><input type="checkbox" value="${child}" ${(state.consultation.consultationTypes.general||[]).includes(child)?'checked':''} onchange="onToggleArray(['consultation','consultationTypes','general'], this.value, this.checked)">${child}</label>`).join('')}</div>
+                      </div>
+                    ` : ''}
+${t==='A:生物' && opt==='個別案件相談' && renderConsultationTypes.includes(opt) ? `
+  <div class="field indent-1"><span class="label">個別案件相談 詳細（複数選択可）</span>
+    <div class="vlist">
+      ${consultationTypeOptions.individual.map(child => {
+        let childHtml = `<div><label class="chip"><input type="checkbox" value="${child}" ${(state.consultation.consultationTypes.individual||[]).includes(child)?'checked':''} onchange="onToggleArray(['consultation','consultationTypes','individual'], this.value, this.checked)">${child}</label>`;
+        
+        if (child === '生活環境被害（詳細選択肢あり）' && (state.consultation.consultationTypes.individual||[]).includes('生活環境被害（詳細選択肢あり）')) {
+          childHtml += `<div class="field indent-2"><span class="label">生活環境被害詳細（複数選択可）</span><div class="chips">${consultationTypeOptions.environmentalDamage.map(sc=>`<label class="chip"><input type="checkbox" value="${sc}" ${(state.consultation.consultationTypes.environmentalDamage||[]).includes(sc)?'checked':''} onchange="onToggleArray(['consultation','consultationTypes','environmentalDamage'], this.value, this.checked)">${sc}</label>`).join('')}</div></div>`;
+        }
+        
+        if (child === '生態系かく乱（詳細選択肢あり）' && (state.consultation.consultationTypes.individual||[]).includes('生態系かく乱（詳細選択肢あり）')) {
+          childHtml += `<div class="field indent-2"><span class="label">生態系かく乱詳細（複数選択可）</span><div class="chips">${consultationTypeOptions.ecologicalDisturbance.map(sc=>`<label class="chip"><input type="checkbox" value="${sc}" ${(state.consultation.consultationTypes.ecologicalDisturbance||[]).includes(sc)?'checked':''} onchange="onToggleArray(['consultation','consultationTypes','ecologicalDisturbance'], this.value, this.checked)">${sc}</label>`).join('')}</div></div>`;
+        }
+        
+        if (child === '傷病鳥獣（詳細選択肢あり）' && (state.consultation.consultationTypes.individual||[]).includes('傷病鳥獣（詳細選択肢あり）')) {
+          childHtml += `<div class="field indent-2"><span class="label">傷病鳥獣詳細（複数選択可）</span><div class="chips"><label class="chip"><input type="checkbox" value="保護" ${(state.consultation.consultationTypes.injuredWildlife||[]).includes('保護')?'checked':''} onchange="onToggleArray(['consultation','consultationTypes','injuredWildlife'], this.value, this.checked)">保護</label><label class="chip"><input type="checkbox" value="駆除" ${(state.consultation.consultationTypes.injuredWildlife||[]).includes('駆除')?'checked':''} onchange="onToggleArray(['consultation','consultationTypes','injuredWildlife'], this.value, this.checked)">駆除</label><label class="chip"><input type="checkbox" value="その他" ${(state.consultation.consultationTypes.injuredWildlife||[]).includes('その他')?'checked':''} onchange="onToggleArray(['consultation','consultationTypes','injuredWildlife'], this.value, this.checked)">その他</label></div></div>`;
+        }
+        
+        return childHtml + '</div>';
+      }).join('')}
+    </div>
+  </div>
+` : ''}
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+            ` : ''}
+            <div class="field"><span class="label">相談詳細</span><textarea oninput="setInNoRender(['consultation','details'], this.value)">${state.consultation.details||''}</textarea>
+            </div>
+          </div>
+
+          <div class="card" style="align-self: start;">
+            <h2>記録・対応</h2>
+            <div class="field"><span class="label">対応種類（複数選択可）</span>
+              <div class="vlist">
+                ${responseTypes.map(opt=>`
+                  <div>
+                    <label class="chip"><input type="checkbox" value="${opt}" ${(state.response.responseTypes||[]).includes(opt)?'checked':''} onchange="onToggleArray(['response','responseTypes'], this.value, this.checked)">${opt}</label>
+                    ${opt==='他の機関等を紹介・依頼（詳細選択肢あり）' && (state.response.responseTypes||[]).includes('他の機関等を紹介・依頼（詳細選択肢あり）') ? `
+                      <div class="field indent-1">
+                        <label class="chip"><input type="checkbox" ${state.response.otherOrganizations.introduceSelected?'checked':''} onchange="setIn(['response','otherOrganizations','introduceSelected'], this.checked)">紹介（詳細選択肢あり）</label>
+                        ${state.response.otherOrganizations.introduceSelected ? `
+                          <div class="chips indent-2" style="margin-top: 8px;">${Object.keys(otherOrganizationsOptions['紹介（詳細選択肢あり）']).map(o=>`<label class="chip"><input type="checkbox" value="${o}" ${(state.response.otherOrganizations.introduce||[]).includes(o)?'checked':''} onchange="onToggleArray(['response','otherOrganizations','introduce'], this.value, this.checked)">${o}</label>`).join('')}</div>
+                          ${Object.keys(otherOrganizationsOptions['紹介（詳細選択肢あり）']).filter(o=>(state.response.otherOrganizations.introduce||[]).includes(o) && otherOrganizationsOptions['紹介（詳細選択肢あり）'][o].length > 0).map(o=>`
+                            <div class="field indent-2"><span class="label">${o} 詳細</span>
+                              <div class="chips">${otherOrganizationsOptions['紹介（詳細選択肢あり）'][o].map(sub=>`<label class="chip"><input type="checkbox" value="${sub}" ${((state.response.otherOrganizations.introduceDetails||{})[o]||[]).includes(sub)?'checked':''} onchange="onToggleNestedArray(['response','otherOrganizations','introduceDetails','${o}'], this.value, this.checked)">${sub}</label>`).join('')}</div>
+                            </div>
+                          `).join('')}
+                          ${(state.response.otherOrganizations.introduce||[]).includes('その他（具体的に）') ? `
+                            <div class="field indent-2"><span class="label">その他（具体的に）</span><input type="text" value="${state.response.otherOrganizationsOther.introduce||''}" oninput="setInNoRender(['response','otherOrganizationsOther','introduce'], this.value)"></div>
+                          ` : ''}
+                        ` : ''}
+                      </div>
+                      <div class="field indent-1">
+                        <label class="chip"><input type="checkbox" ${state.response.otherOrganizations.requestSelected?'checked':''} onchange="setIn(['response','otherOrganizations','requestSelected'], this.checked)">依頼（詳細選択肢あり）</label>
+                        ${state.response.otherOrganizations.requestSelected ? `
+                          <div class="chips indent-2" style="margin-top: 8px;">${Object.keys(otherOrganizationsOptions['依頼（詳細選択肢あり）']).map(o=>`<label class="chip"><input type="checkbox" value="${o}" ${(state.response.otherOrganizations.request||[]).includes(o)?'checked':''} onchange="onToggleArray(['response','otherOrganizations','request'], this.value, this.checked)">${o}</label>`).join('')}</div>
+                          ${Object.keys(otherOrganizationsOptions['依頼（詳細選択肢あり）']).filter(o=>(state.response.otherOrganizations.request||[]).includes(o) && otherOrganizationsOptions['依頼（詳細選択肢あり）'][o].length > 0).map(o=>`
+                            <div class="field indent-2"><span class="label">${o} 詳細</span>
+                              <div class="chips">${otherOrganizationsOptions['依頼（詳細選択肢あり）'][o].map(sub=>`<label class="chip"><input type="checkbox" value="${sub}" ${((state.response.otherOrganizations.requestDetails||{})[o]||[]).includes(sub)?'checked':''} onchange="onToggleNestedArray(['response','otherOrganizations','requestDetails','${o}'], this.value, this.checked)">${sub}</label>`).join('')}</div>
+                            </div>
+                          `).join('')}
+                          ${(state.response.otherOrganizations.request||[]).includes('その他（具体的に）') ? `
+                            <div class="field indent-2"><span class="label">その他（具体的に）</span><input type="text" value="${state.response.otherOrganizationsOther.request||''}" oninput="setInNoRender(['response','otherOrganizationsOther','request'], this.value)"></div>
+                          ` : ''}
+                        ` : ''}
+                      </div>
+                    ` : opt==='委託での駆除対応' && (state.response.responseTypes||[]).includes('委託での駆除対応') ? `
+                      <div class="field indent-1"><span class="label">駆除対応詳細（複数選択可）</span>
+                        <div class="chips">${removalDetailOptions.map(o=>`<label class="chip"><input type="checkbox" value="${o}" ${(state.consultation.subcategories||[]).includes(o)?'checked':''} onchange="onToggleArray(['consultation','subcategories'], this.value, this.checked)">${o}</label>`).join('')}</div>
+                      </div>
+                      ${state.consultation.subcategories.includes('その他（具体的に）') ? `
+                        <div class="field indent-2"><span class="label">駆除対応詳細 その他（具体的に）</span><input type="text" value="${state.response.removalDetailOtherText||''}" oninput="setInNoRender(['response','removalDetailOtherText'], this.value)"></div>
+                      `: ''}
+                    ` : ''}
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+            <div class="field"><span class="label">対応内容</span><textarea oninput="setInNoRender(['response','responseContent'], this.value)">${state.response.responseContent||''}</textarea></div>
+            <div class="divider"></div>
+            <div class="field"><span class="label">追加対応</span>
+              ${state.response.followupItems.map((it,idx)=>`
+                ${idx === 0 || (state.response.followupItems[idx-1] && state.response.followupItems[idx-1].needsFollowup && state.response.followupItems[idx-1].followupDate && state.response.followupItems[idx-1].followupContent) ? `
+                  <label class="chip" style="margin-bottom:8px;"><input type="checkbox" ${it.needsFollowup?'checked':''} onchange="(()=>{ const arr=state.response.followupItems.slice(); arr[${idx}].needsFollowup=this.checked; setIn(['response','followupItems'], arr); addFollowupIfNeeded(${idx}); })()">${idx === 0 ? '要追加対応' : `要追加対応（${idx+1}回目）`}</label>
+                  ${it.needsFollowup ? `
+                    <div class="row cols-3" style="margin-bottom:8px; align-items:end;">
+                      <input type="date" value="${it.followupDate||''}" oninput="(()=>{ const arr=state.response.followupItems.slice(); arr[${idx}].followupDate=this.value; setInNoRender(['response','followupItems'], arr); addFollowupIfNeeded(${idx}); })()">
+                      <input type="time" value="${it.followupTime||''}" oninput="(()=>{ const arr=state.response.followupItems.slice(); arr[${idx}].followupTime=this.value; setInNoRender(['response','followupItems'], arr); })()">
+                    </div>
+                    <input type="text" placeholder="追加対応内容" value="${it.followupContent||''}" oninput="(()=>{ const arr=state.response.followupItems.slice(); arr[${idx}].followupContent=this.value; setInNoRender(['response','followupItems'], arr); addFollowupIfNeeded(${idx}); })()">
+                  ` : ''}
+                ` : ''}
+              `).join('')}
+            </div>
+            <div class="row cols-2">
+              <div class="field"><span class="label">個別案件タグ</span><input type="text" value="${state.response.individualCaseTag||''}" oninput="setInNoRender(['response','individualCaseTag'], this.value)"></div>
+              <div class="field"><span class="label">備考</span><input type="text" value="${state.response.remarks||''}" oninput="setInNoRender(['response','remarks'], this.value)"></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <h2>JSONプレビュー</h2>
+            <div class="muted">保存時に多段ヘッダーへマッピングされます</div>
+            <div class="jsonbox">${(() => {
+              try { return JSON.stringify(buildPayload(), null, 2).replace(/</g,'&lt;'); } catch(e) { return 'プレビュー生成エラー: '+e.message; }
+            })()}</div>
+            ${state._ui.alert ? `<div class="alert ${state._ui.alert.type==='success'?'success':'error'}">${state._ui.alert.msg}</div>` : ''}
+          </div>
+        </div>
+      `;
+      // Restore scroll position
+      try {
+        if (typeof window !== 'undefined' && window.scrollTo) {
+          window.scrollTo(0, prevScrollY);
+        } else if (document && document.documentElement) {
+          document.documentElement.scrollTop = prevScrollY;
+        }
+      } catch(_e){}
+      try { console.log('[reception_form] render: end'); } catch(_e){}
+    }
+    // getQueryParam is defined above with safe fallback
+
+    function loadIfEditing(){
+      try { console.log('[reception_form] loadIfEditing: start'); } catch(_e){}
+      const id = getQueryParam('id');
+      if (!id) { render(); return; }
+      try { console.log('[reception_form] loadIfEditing: id=', id); } catch(_e){}
+      google.script.run
+        .withSuccessHandler(obj => {
+          try {
+            // obj = { システム:{ID,作成日時,更新日時}, メタ:{...}, 相談:{...}, 対応:{...} }
+            state.id = (obj && obj.システム && obj.システム.ID) || null;
+            const m = (obj && obj.メタ) || {};
+            const q = (obj && obj.相談) || {};
+            const a = (obj && obj.対応) || {};
+            state.meta = Object.assign({}, state.meta, {
+              receptionDate: m['受付日'] != null ? m['受付日'] : state.meta.receptionDate,
+              receptionTime: m['受付時刻'] != null ? m['受付時刻'] : state.meta.receptionTime,
+              assignee: m['担当者'] != null ? m['担当者'] : state.meta.assignee,
+              ward: m['病棟'] != null ? m['病棟'] : state.meta.ward,
+              siteAddress: m['現場住所'] != null ? m['現場住所'] : state.meta.siteAddress,
+              contactMethod: m['連絡方法'] != null ? m['連絡方法'] : state.meta.contactMethod,
+              otherContactMethod: m['その他連絡方法'] != null ? m['その他連絡方法'] : state.meta.otherContactMethod,
+              contactSource: m['問い合わせ元'] != null ? m['問い合わせ元'] : state.meta.contactSource,
+              contactInfo: m['問い合わせ元連絡先'] != null ? m['問い合わせ元連絡先'] : state.meta.contactInfo
+            });
+            // 相談種別（階層JSON）からUI状態を復元
+            const cjson = q['相談種別'] || {};
+            const hasGeneral = !!cjson['一般論的相談'];
+            const hasIndividual = !!cjson['個別案件相談'];
+            const common = [];
+            if (hasGeneral) common.push('一般論的相談（法・制度含む）');
+            if (hasIndividual) common.push('個別案件相談');
+            // トップの「その他」
+            if (cjson['その他'] === 1) common.push('その他');
+            const restored = {
+              common: common,
+              general: hasGeneral ? Object.keys(cjson['一般論的相談']||{}).filter(k=>k!=='（選択）') : [],
+              individual: [],
+              environmentalDamage: [],
+              ecologicalDisturbance: [],
+              injuredWildlife: []
+            };
+            if (hasIndividual) {
+              const ind = cjson['個別案件相談'] || {};
+              // 葉
+              ['餌付け','その他'].forEach(leaf => { if (ind[leaf] === 1) restored.individual.push(leaf); });
+              // 生活環境被害
+              if (ind['生活環境被害']) {
+                restored.individual.push('生活環境被害（詳細選択肢あり）');
+                if (typeof ind['生活環境被害'] === 'object') restored.environmentalDamage = Object.keys(ind['生活環境被害']).filter(k=>k!=='（選択）');
+              }
+              // 生態系かく乱
+              if (ind['生態系かく乱']) {
+                restored.individual.push('生態系かく乱（詳細選択肢あり）');
+                if (typeof ind['生態系かく乱'] === 'object') restored.ecologicalDisturbance = Object.keys(ind['生態系かく乱']).filter(k=>k!=='（選択）');
+              }
+              // 傷病鳥獣
+              if (ind['傷病鳥獣']) {
+                restored.individual.push('傷病鳥獣（詳細選択肢あり）');
+                if (typeof ind['傷病鳥獣'] === 'object') {
+                  const keys = Object.keys(ind['傷病鳥獣']).filter(k=>k!=='（選択）' && ind['傷病鳥獣'][k] === 1);
+                  restored.injuredWildlife = keys;
+                }
+              }
+            }
+            const target = q['相談対象'] || state.consultation.consultationTarget;
+            state.consultation = Object.assign({}, state.consultation, {
+              consultationTarget: target,
+              consultationTypes: restored,
+              selectedCategories: q['生物カテゴリ'] != null ? q['生物カテゴリ'] : state.consultation.selectedCategories,
+              biologicalSpecies: q['生物種'] != null ? q['生物種'] : state.consultation.biologicalSpecies,
+              otherBiologyTexts: q['生物種その他記述'] != null ? q['生物種その他記述'] : state.consultation.otherBiologyTexts,
+              subcategories: q['詳細サブカテゴリ'] != null ? q['詳細サブカテゴリ'] : state.consultation.subcategories,
+              details: q['詳細'] != null ? q['詳細'] : state.consultation.details
+            });
+            const fu = Array.isArray(a['追加対応']) ? a['追加対応'].map(it => ({
+              needsFollowup: !!it['要追加対応'],
+              followupDate: it['対応日'] || '',
+              followupTime: it['対応時刻'] || '',
+              followupContent: it['追加対応内容'] || ''
+            })) : state.response.followupItems;
+            // Handle response types and hierarchical other organizations data
+            const responseData = a['対応種別'] != null ? a['対応種別'] : state.response.responseTypes;
+            const otherOrganizationsRawData = a['他の機関等'] != null ? a['他の機関等'] : {};
+            const otherOrganizationsData = {
+              introduceSelected: otherOrganizationsRawData['を紹介選択'] || false,
+              requestSelected: otherOrganizationsRawData['に対応依頼選択'] || false,
+              introduce: otherOrganizationsRawData['を紹介'] || [],
+              request: otherOrganizationsRawData['に対応依頼'] || [],
+              introduceDetails: otherOrganizationsRawData['を紹介詳細'] || {},
+              requestDetails: otherOrganizationsRawData['に対応依頼詳細'] || {}
+            };
+            
+            state.response = Object.assign({}, state.response, {
+              responseTypes: responseData,
+              otherOrganizations: otherOrganizationsData,
+              responseContent: a['対応内容'] != null ? a['対応内容'] : state.response.responseContent,
+              removalDetailOtherText: a['駆除対応詳細その他'] != null ? a['駆除対応詳細その他'] : state.response.removalDetailOtherText,
+              followupItems: fu,
+              remarks: a['備考'] != null ? a['備考'] : state.response.remarks,
+              individualCaseTag: a['個別案件タグ'] != null ? a['個別案件タグ'] : state.response.individualCaseTag
+            });
+          } catch(e) { console.error('map error', e); }
+          try { console.log('[reception_form] loadIfEditing: success, calling render'); } catch(_e){}
+          render();
+        })
+        .withFailureHandler(err => { try{ console.error('load failed', err); }catch(_e){}; render(); })
+        .getReceptionById(id);
+    }
+
+    // Global error surfaces so page is never blank
+    window.addEventListener('error', function(e){ try{ showFatalError(e && e.message ? e.message : '未知のエラー'); }catch(_){} });
+    window.addEventListener('unhandledrejection', function(e){ try{ var m=(e&&e.reason&&e.reason.message)||e.reason||'Promise エラー'; showFatalError(m); }catch(_){} });
+    document.addEventListener('DOMContentLoaded', function(){ try{ console.log('[reception_form] DOMContentLoaded'); loadIfEditing(); } catch(err){ showFatalError(err && err.message ? err.message : err); } });
+    // Fallback: also trigger on window.onload
+    window.addEventListener('load', function(){ try{ console.log('[reception_form] window.load'); var r=document.getElementById('root'); if (r && !r.firstChild) render(); } catch(err){ showFatalError(err && err.message ? err.message : err); } });
+    // Fallback timer: ensure something renders even if events are blocked
+    setTimeout(function(){ try{ console.log('[reception_form] fallback timer firing'); if (document.getElementById('root') && !document.getElementById('root').children.length) render(); } catch(err){ showFatalError(err && err.message ? err.message : err); } }, 2000);
+  </script>
+</head>
+<body>
+  <div class="container">
+    <div class="header" style="margin-bottom:10px;">
+      <div class="title">📝 受付入力フォーム（静的ヘッダ）</div>
+      <div class="actions">
+        <a class="btn ghost" href="?">← 一覧</a>
+        <a class="btn" href="?page=debug">🔧 デバッグ</a>
+      </div>
+    </div>
+    <noscript>
+      <div class="alert error">このページを表示するにはJavaScriptを有効にしてください。</div>
+    </noscript>
+    <div id="root"><div class="alert">読み込み中...</div></div>
+  </div>
+</body>
+</html>
