@@ -109,14 +109,31 @@ function flattenToPaths_(obj, prefix) {
   prefix = prefix || [];
   const out = [];
   const isObj = function(v){ return v && typeof v === 'object' && !Array.isArray(v); };
+  
+  // 深さ制限: 9層を超える場合は処理停止
+  if (prefix.length >= 9) {
+    return out;
+  }
+  
   if (Array.isArray(obj)) {
+    // LIST内にDICTがある場合はエラー
     for (var i=0;i<obj.length;i++) {
-      out.push.apply(out, flattenToPaths_(obj[i], prefix.concat(String(i+1))));
+      if (isObj(obj[i])) {
+        throw new Error('LIST内にDICTが含まれています。仕様違反です: ' + JSON.stringify(obj[i]));
+      }
     }
+    // 配列全体をJSON文字列として単一パスで出力
+    out.push([prefix, JSON.stringify(obj)]);
   } else if (isObj(obj)) {
-    for (var k in obj) {
-      if (Object.prototype.hasOwnProperty.call(obj,k)) {
-        out.push.apply(out, flattenToPaths_(obj[k], prefix.concat(k)));
+    // DICT遭遇時: 親ノードの存在フラグ（値1）を追加
+    out.push([prefix, 1]);
+    // 9層目の場合は子要素を処理しない（深さ制限）
+    if (prefix.length < 9) {
+      // 子要素を処理
+      for (var k in obj) {
+        if (Object.prototype.hasOwnProperty.call(obj,k)) {
+          out.push.apply(out, flattenToPaths_(obj[k], prefix.concat(k)));
+        }
       }
     }
   } else {
@@ -125,11 +142,11 @@ function flattenToPaths_(obj, prefix) {
   return out;
 }
 
-// ヘッダーを作成（5行固定）: 1行目=型情報, 2-5行目=L1,L2,L3,L4
+// ヘッダーを作成（10行固定）: 1行目=型情報, 2-10行目=L1,L2,L3,L4,L5,L6,L7,L8,L9
 function createNestedHeaders_(sheet, headerPaths, headerKinds) {
   if (!headerPaths || headerPaths.length === 0) return 0;
-  // 新仕様: 5行固定 (1行目=型情報, 2-5行目=L1,L2,L3,L4)
-  var depth = 5;
+  // 新仕様: 10行固定 (1行目=型情報, 2-10行目=L1,L2,L3,L4,L5,L6,L7,L8,L9)
+  var depth = 10;
   var cols = headerPaths.length;
   var values = [];
   
@@ -140,11 +157,11 @@ function createNestedHeaders_(sheet, headerPaths, headerKinds) {
   }
   values.push(typeRow);
   
-  // 2-5行目: L1,L2,L3,L4のパス情報
+  // 2-10行目: L1,L2,L3,L4,L5,L6,L7,L8,L9のパス情報
   for (var r=1; r<depth; r++) {
     var row = [];
     for (var c=0; c<cols; c++) {
-      // パスが4段未満の場合は"NULL"で埋める
+      // パスが9段未満の場合は"NULL"で埋める
       row.push(headerPaths[c][r-1] || 'NULL');
     }
     values.push(row);
@@ -165,12 +182,12 @@ function createNestedHeaders_(sheet, headerPaths, headerKinds) {
   return depth;
 }
 
-// 既存ヘッダー（5行固定）を取得: 1行目=型情報, 2-5行目=パス
+// 既存ヘッダー（10行固定）を取得: 1行目=型情報, 2-10行目=パス
 function readHeaderPaths_(sheet, headerRows) {
   var lastCol = sheet.getLastColumn();
   if (lastCol === 0 || headerRows === 0) return { paths: [], kinds: [] };
-  // 5行固定に対応：headerRowsが5以外でも5段として読み取る
-  var actualRows = Math.max(headerRows, 5);
+  // 10行固定に対応：headerRowsが10以外でも10段として読み取る
+  var actualRows = Math.max(headerRows, 10);
   var vals = sheet.getRange(1,1,actualRows,lastCol).getValues();
   var paths = [];
   var kinds = [];
@@ -180,9 +197,9 @@ function readHeaderPaths_(sheet, headerRows) {
     var kind = (vals[0] && vals[0][c]) ? vals[0][c].toString() : 'SCALAR';
     kinds.push(kind);
     
-    // 2-5行目: パス情報 (L1,L2,L3,L4)
+    // 2-10行目: パス情報 (L1,L2,L3,L4,L5,L6,L7,L8,L9)
     var path = [];
-    for (var r=1; r<5; r++) { // 2-5行目を読み取り
+    for (var r=1; r<10; r++) { // 2-10行目を読み取り
       var cell = (vals[r] && vals[r][c]) ? vals[r][c].toString() : 'NULL';
       if (cell !== 'NULL' && cell !== '') {
         path.push(cell);
@@ -225,13 +242,13 @@ function generateHeaderKinds_(headerPaths, flatData) {
     // 値のパターンから型を推定
     for (var i = 0; i < values.length; i++) {
       var val = values[i];
-      if (val === true || val === 1 || val === '1') {
-        // 存在フラグの可能性
-        kind = 'EXISTENSE';
-        break;
-      } else if (typeof val === 'string' && val.match(/^\[.*\]$/)) {
+      if (typeof val === 'string' && val.match(/^\[.*\]$/)) {
         // 配列リテラル文字列
         kind = 'LIST';
+        break;
+      } else if (val === 1) {
+        // 値が1の場合は常にEXISTENSE（DICT存在フラグ）
+        kind = 'EXISTENSE';
         break;
       }
     }
@@ -563,7 +580,7 @@ function getOrCreateSheet_(name) {
 
 // JSON(配列 or オブジェクト) → シート
 // data: Object | Object[]
-// 仕様: 5行ヘッダー（1行目=型情報, 2-5行目=4層構造）にフラット化して列を作成し、各行へ値を書き込む
+// 仕様: 10行ヘッダー（1行目=型情報, 2-10行目=9層構造）にフラット化して列を作成し、各行へ値を書き込む
 function jsonToSheet(sheetName, data) {
   try {
     var sheet = getOrCreateSheet_(sheetName);
@@ -580,7 +597,7 @@ function jsonToSheet(sheetName, data) {
     var allPaths = Object.keys(allPathsSet).map(function(k){ return allPathsSet[k]; });
     allPaths = sortPaths_(allPaths);
 
-    // ヘッダー作成（5行固定：1行目=型情報, 2-5行目=L1,L2,L3,L4）
+    // ヘッダー作成（10行固定：1行目=型情報, 2-10行目=L1,L2,L3,L4,L5,L6,L7,L8,L9）
     var headerKinds = generateHeaderKinds_(allPaths, flattenedRows);
     var headerRows = createNestedHeaders_(sheet, allPaths, headerKinds);
 
@@ -617,7 +634,7 @@ function jsonToSheet(sheetName, data) {
 function sheetToJson(sheetName) {
   try {
     var sheet = getOrCreateSheet_(sheetName);
-    var headerRows = Math.max(5, sheet.getFrozenRows() || 0);
+    var headerRows = Math.max(10, sheet.getFrozenRows() || 0);
     var headerInfo = readHeaderPaths_(sheet, headerRows);
     var paths = headerInfo.paths;
     var kinds = headerInfo.kinds;
@@ -633,7 +650,20 @@ function sheetToJson(sheetName) {
       for (var c=0;c<paths.length;c++){
         var p = paths[c];
         if (!p || p.length===0) continue;
-        entries.push([p, row[c]]);
+        var value = row[c];
+        var kind = kinds[c] || 'SCALAR';
+        
+        // LIST型の場合はJSON.parse()で配列復元
+        if (kind === 'LIST' && typeof value === 'string' && value.match(/^\[.*\]$/)) {
+          try {
+            value = JSON.parse(value);
+          } catch (parseErr) {
+            console.warn('LIST型パース失敗:', value, parseErr);
+            // パース失敗時は元の文字列のまま
+          }
+        }
+        
+        entries.push([p, value]);
       }
       out.push(unflattenFromPaths_(entries));
     }
@@ -674,7 +704,7 @@ function debugGetAllDataStep() {
 
 // 直接テスト: サンプルJSONをシートへ書き込み→読み戻し件数を返す
 function runDirectTest() {
-  // サンプルデータ（配列や入れ子、配列インデックスは1始まりでパス化）
+  // サンプルデータ（LIST内にはプリミティブのみ - DICT不可）
   var sample = [
     {
       メタ: { 連絡方法: 'メール' },
@@ -686,12 +716,12 @@ function runDirectTest() {
         },
         詳細: 'テスト1'
       },
-      items: [ { name: 'x', qty: 1 }, { name: 'y', qty: 2 } ]
+      tags: ['外来生物', '相談', 'メール']
     },
     {
       メタ: { 連絡方法: '電話' },
       相談: { 相談対象: '在来生物', 詳細: 'テスト2' },
-      items: [ { name: 'z', qty: 3 } ]
+      tags: ['在来生物', '電話']
     }
   ];
 

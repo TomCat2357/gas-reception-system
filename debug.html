@@ -75,6 +75,7 @@
     <div>
       <button class="btn" onclick="testGetAllData()">📋 データ取得テスト</button>
       <button class="btn" onclick="testCreateSheet()">📄 シート作成テスト</button>
+      <button class="btn" onclick="showSpreadsheetInfo()">🔗 スプレッドシート情報表示</button>
       <button class="btn" onclick="clearLog()">🗑️ ログクリア</button>
     </div>
 
@@ -222,10 +223,32 @@
         .debugJsonSamples();
     }
     
+    // スプレッドシート情報表示
+    function showSpreadsheetInfo() {
+      log('スプレッドシート情報を取得中...', 'info');
+      google.script.run
+        .withSuccessHandler((result) => {
+          if (result.success && result.spreadsheetInfo) {
+            const info = result.spreadsheetInfo;
+            log(`スプレッドシート名: ${info.name}`, 'success');
+            log(`スプレッドシートID: ${info.id}`, 'info');
+            log(`📋 スプレッドシートURL: ${info.url}`, 'success');
+            log(`📄 シート数: ${info.sheets.length}個 (${info.sheets.join(', ')})`, 'info');
+          } else {
+            log(`スプレッドシート情報取得失敗: ${result.error || '不明なエラー'}`, 'error');
+          }
+        })
+        .withFailureHandler((error) => {
+          log(`スプレッドシート情報取得エラー: ${error.message}`, 'error');
+        })
+        .debugSpreadsheetInfo();
+    }
+    
     // 初期化
     document.addEventListener('DOMContentLoaded', function() {
       log('デバッグページが読み込まれました', 'success');
-      log('まず「データ取得テスト」を実行してください', 'info');
+      log('まず「スプレッドシート情報表示」でシートURLを確認してください', 'info');
+      log('その後「データ取得テスト」を実行してください', 'info');
     });
   </script>
 </body>
