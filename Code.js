@@ -479,3 +479,220 @@ function debugSpreadsheetInfo() {
     };
   }
 }
+
+// ======= 汎用 JSON ⇔ シート 変換（4層ヘッダー） =======
+
+// 指定シートを取得/作成
+function getOrCreateSheet_(name) {
+  const ssId = PropertiesService.getScriptProperties().getProperty('DATA_SPREADSHEET_ID');
+  const ss = ssId ? SpreadsheetApp.openById(ssId) : SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(name);
+  if (!sheet) sheet = ss.insertSheet(name);
+  return sheet;
+}
+
+// JSON(配列 or オブジェクト) → シート
+// data: Object | Object[]
+// 仕様: 4層ヘッダーにフラット化して列を作成し、各行へ値を書き込む
+function jsonToSheet(sheetName, data) {
+  try {
+    var sheet = getOrCreateSheet_(sheetName);
+    var rows = Array.isArray(data) ? data.slice() : [data];
+    if (rows.length === 0) return { ok: true, rows: 0, message: '入力データが空です' };
+
+    // 全行のパスを収集
+    var allPathsSet = {};
+    var flattenedRows = rows.map(function(obj){
+      var flat = flattenToPaths_(obj, []); // [[path[], value]]
+      flat.forEach(function(pv){ allPathsSet[pathKey_(pv[0])] = pv[0]; });
+      return flat;
+    });
+    var allPaths = Object.keys(allPathsSet).map(function(k){ return allPathsSet[k]; });
+    allPaths = sortPaths_(allPaths);
+
+    // ヘッダー作成（4段固定）
+    var headerRows = createNestedHeaders_(sheet, allPaths);
+
+    // 列マップ
+    var keyToCol = {};
+    for (var i=0;i<allPaths.length;i++) keyToCol[pathKey_(allPaths[i])] = i+1;
+
+    // 既存データをクリア（ヘッダー以外）
+    var lastRow = sheet.getLastRow();
+    if (lastRow > headerRows) sheet.getRange(headerRows+1, 1, lastRow - headerRows, sheet.getMaxColumns()).clearContent();
+
+    // 書き込み
+    var lastCol = sheet.getLastColumn();
+    var outValues = [];
+    flattenedRows.forEach(function(flat){
+      var rowVals = new Array(lastCol).fill('');
+      flat.forEach(function(item){
+        var key = pathKey_(item[0]);
+        var col = keyToCol[key];
+        if (col) rowVals[col-1] = item[1];
+      });
+      outValues.push(rowVals);
+    });
+    if (outValues.length) sheet.getRange(headerRows+1, 1, outValues.length, lastCol).setValues(outValues);
+
+    return { ok: true, rows: outValues.length, cols: lastCol, headerRows: headerRows };
+  } catch (e) {
+    console.error('jsonToSheet error:', e);
+    throw new Error('jsonToSheet 失敗: ' + e);
+  }
+}
+
+// シート → JSON(配列)
+function sheetToJson(sheetName) {
+  try {
+    var sheet = getOrCreateSheet_(sheetName);
+    var headerRows = Math.max(4, sheet.getFrozenRows() || 0);
+    var paths = readHeaderPaths_(sheet, headerRows);
+    if (!paths || paths.length === 0) return [];
+    var lastRow = sheet.getLastRow();
+    if (lastRow <= headerRows) return [];
+    var lastCol = sheet.getLastColumn();
+    var data = sheet.getRange(headerRows+1, 1, lastRow - headerRows, lastCol).getValues();
+    var out = [];
+    for (var r=0;r<data.length;r++){
+      var row = data[r];
+      var entries = [];
+      for (var c=0;c<paths.length;c++){
+        var p = paths[c];
+        if (!p || p.length===0) continue;
+        entries.push([p, row[c]]);
+      }
+      out.push(unflattenFromPaths_(entries));
+    }
+    return out;
+  } catch (e) {
+    console.error('sheetToJson error:', e);
+    throw new Error('sheetToJson 失敗: ' + e);
+  }
+}
+
+// ======= 簡易テスト用エンドポイント =======
+
+function simpleTest() {
+  return 'ok';
+}
+
+function pingTest() {
+  return { pong: true, at: new Date().toISOString() };
+}
+
+// データの安全取得（存在しない場合はnull）
+function getAllDataSafe() {
+  try {
+    return sheetToJson('受付データ');
+  } catch (e) {
+    return null;
+  }
+}
+
+function debugGetAllDataStep() {
+  try {
+    var data = sheetToJson('受付データ');
+    return 'rows=' + data.length;
+  } catch (e) {
+    return 'error: ' + e;
+  }
+}
+
+// 直接テスト: サンプルJSONをシートへ書き込み→読み戻し件数を返す
+function runDirectTest() {
+  // サンプルデータ（配列や入れ子、配列インデックスは1始まりでパス化）
+  var sample = [
+    {
+      メタ: { 連絡方法: 'メール' },
+      相談: {
+        相談対象: '外来生物',
+        相談種別: {
+          一般論的相談: { 入門: true },
+          個別案件相談: { 生活環境被害: { 騒音: true } }
+        },
+        詳細: 'テスト1'
+      },
+      items: [ { name: 'x', qty: 1 }, { name: 'y', qty: 2 } ]
+    },
+    {
+      メタ: { 連絡方法: '電話' },
+      相談: { 相談対象: '在来生物', 詳細: 'テスト2' },
+      items: [ { name: 'z', qty: 3 } ]
+    }
+  ];
+
+  var sheetName = 'JSON変換テスト';
+  var sheet = getOrCreateSheet_(sheetName);
+  var res = jsonToSheet(sheetName, sample);
+  var back = sheetToJson(sheetName);
+  return {
+    ok: true,
+    write: res,
+    readRows: back.length,
+    sheet: { name: sheet.getName(), url: sheet.getParent().getUrl() }
+  };
+}
+
+// ======= Debug helpers for JSON⇔Sheet =======
+
+function getJsonSampleSimple_() {
+  return {
+    id: 1,
+    name: 'Alice',
+    active: true,
+    score: 98.5,
+    contact: { email: 'alice@example.com', phone: '090-0000-0000' },
+    tags: ['alpha', 'beta']
+  };
+}
+
+function getJsonSampleVarious_() {
+  return {
+    システム: { バージョン: '1.0', 生成日時: new Date().toISOString() },
+    ユーザー: {
+      ID: 123,
+      氏名: { 姓: '山田', 名: '太郎' },
+      連絡先: { メール: 'taro@example.com', 電話: null }
+    },
+    注文: [
+      { 番号: 'A-001', 金額: 1200, 明細: [ { 品目: 'りんご', 数量: 2 }, { 品目: 'バナナ', 数量: 3 } ] },
+      { 番号: 'A-002', 金額: 800, 明細: [] }
+    ],
+    設定: { 通知: { メール: true, SMS: false }, 言語: 'ja' },
+    備考: ''
+  };
+}
+
+function debugJsonSamples() {
+  return { simple: getJsonSampleSimple_(), various: getJsonSampleVarious_() };
+}
+
+function debugWriteSample(sampleType, sheetName) {
+  var sample = sampleType === 'various' ? getJsonSampleVarious_() : getJsonSampleSimple_();
+  var name = sheetName && String(sheetName).trim() ? String(sheetName).trim() : ('DEBUG_' + (sampleType === 'various' ? 'VARIANTS' : 'SIMPLE'));
+  var res = jsonToSheet(name, Array.isArray(sample) ? sample : [sample]);
+  var sheet = getOrCreateSheet_(name);
+  return { ok: true, write: res, sheet: { name: sheet.getName(), url: sheet.getParent().getUrl() } };
+}
+
+function debugReadSheet(sheetName) {
+  if (!sheetName) throw new Error('sheetName is required');
+  return sheetToJson(String(sheetName));
+}
+
+function debugWriteRawJson(sheetName, jsonText) {
+  if (!sheetName) throw new Error('sheetName is required');
+  var parsed;
+  try { parsed = JSON.parse(jsonText); } catch(e) { throw new Error('JSON parse error: ' + e); }
+  return jsonToSheet(String(sheetName), parsed);
+}
+
+// 互換: デバッグページのシート作成テスト用
+function testCreateDataSheet() {
+  var sheet = getOrCreateSheet_('受付データ');
+  // 最低限のヘッダー
+  var headers = [ ['システム','ID'], ['システム','作成日時'], ['システム','更新日時'] ];
+  createNestedHeaders_(sheet, headers);
+  return '受付データ シートを初期化しました';
+}

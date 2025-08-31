@@ -77,6 +77,28 @@
       <button class="btn" onclick="testCreateSheet()">📄 シート作成テスト</button>
       <button class="btn" onclick="clearLog()">🗑️ ログクリア</button>
     </div>
+
+    <h2>🧪 JSON⇔シート変換テスト</h2>
+    <div class="form-group">
+      <label>簡単JSON 用シート名</label>
+      <input id="simpleSheetName" value="DEBUG_SIMPLE">
+    </div>
+    <div class="form-group">
+      <label>多ケースJSON 用シート名</label>
+      <input id="variousSheetName" value="DEBUG_VARIANTS">
+    </div>
+    <div>
+      <button class="btn" onclick="writeSimple()">➡️ 簡単JSON → シート</button>
+      <button class="btn" onclick="writeVarious()">➡️ 多ケースJSON → シート</button>
+      <button class="btn" onclick="showSamples()">👀 サンプルJSON表示</button>
+    </div>
+    <div class="form-group">
+      <label>読み戻し対象シート名</label>
+      <input id="readSheetName" value="DEBUG_SIMPLE">
+    </div>
+    <div>
+      <button class="btn" onclick="readBack()">⬅️ シート → JSON</button>
+    </div>
     
     
     
@@ -125,15 +147,17 @@
       
       google.script.run
         .withSuccessHandler((result) => {
-          log(`データ取得成功: ${result.length}件のデータが見つかりました`, 'success');
-          if (result.length > 0) {
-            log(`最初のデータ: ${JSON.stringify(result[0])}`, 'info');
+          if (result && result.length != null) {
+            log(`データ取得成功: ${result.length}件のデータ`, 'success');
+            if (result.length > 0) log(`最初のデータ: ${JSON.stringify(result[0])}`, 'info');
+          } else {
+            log('データ取得: データなし(null)', 'info');
           }
         })
         .withFailureHandler((error) => {
           log(`データ取得エラー: ${error.message}`, 'error');
         })
-        .getAllData();
+        .getAllDataSafe();
     }
     
     // シート作成テスト
@@ -150,7 +174,53 @@
         .testCreateDataSheet();
     }
     
-    // 追加テストは廃止（受付データ専用へ移行）
+    // JSON⇔シート変換テスト
+    function writeSimple() {
+      const name = document.getElementById('simpleSheetName').value.trim();
+      log(`簡単JSONを書き込み中... (sheet=${name})`, 'info');
+      google.script.run
+        .withSuccessHandler((res) => {
+          log(`書き込み成功: rows=${res.write.rows} cols=${res.write.cols}`, 'success');
+          if (res.sheet && res.sheet.url) log(`スプレッドシート: ${res.sheet.url}`, 'info');
+        })
+        .withFailureHandler((err) => log(`書き込み失敗: ${err.message||err}`, 'error'))
+        .debugWriteSample('simple', name);
+    }
+
+    function writeVarious() {
+      const name = document.getElementById('variousSheetName').value.trim();
+      log(`多ケースJSONを書き込み中... (sheet=${name})`, 'info');
+      google.script.run
+        .withSuccessHandler((res) => {
+          log(`書き込み成功: rows=${res.write.rows} cols=${res.write.cols}`, 'success');
+          if (res.sheet && res.sheet.url) log(`スプレッドシート: ${res.sheet.url}`, 'info');
+        })
+        .withFailureHandler((err) => log(`書き込み失敗: ${err.message||err}`, 'error'))
+        .debugWriteSample('various', name);
+    }
+
+    function readBack() {
+      const name = document.getElementById('readSheetName').value.trim();
+      log(`読み戻し中... (sheet=${name})`, 'info');
+      google.script.run
+        .withSuccessHandler((rows) => {
+          log(`読み戻し成功: ${rows.length}件`, 'success');
+          if (rows.length) log(`先頭: ${JSON.stringify(rows[0], null, 2)}`, 'info');
+        })
+        .withFailureHandler((err) => log(`読み戻し失敗: ${err.message||err}`, 'error'))
+        .debugReadSheet(name);
+    }
+
+    function showSamples() {
+      log('サンプルJSONを取得中...', 'info');
+      google.script.run
+        .withSuccessHandler((o) => {
+          log('簡単JSON = ' + JSON.stringify(o.simple, null, 2), 'info');
+          log('多ケースJSON = ' + JSON.stringify(o.various, null, 2), 'info');
+        })
+        .withFailureHandler((err) => log(`サンプル取得失敗: ${err.message||err}`, 'error'))
+        .debugJsonSamples();
+    }
     
     // 初期化
     document.addEventListener('DOMContentLoaded', function() {
