@@ -125,53 +125,72 @@ function flattenToPaths_(obj, prefix) {
   return out;
 }
 
-// ヘッダーを作成（4段固定）: 各段すべてのセルにラベルを書き込む（マージ代替）
-function createNestedHeaders_(sheet, headerPaths) {
+// ヘッダーを作成（5行固定）: 1行目=型情報, 2-5行目=L1,L2,L3,L4
+function createNestedHeaders_(sheet, headerPaths, headerKinds) {
   if (!headerPaths || headerPaths.length === 0) return 0;
-  // 仕様書に従い4段固定 (L1, L2, L3, L4)
-  var depth = 4;
+  // 新仕様: 5行固定 (1行目=型情報, 2-5行目=L1,L2,L3,L4)
+  var depth = 5;
   var cols = headerPaths.length;
   var values = [];
-  for (var r=0;r<depth;r++) {
+  
+  // 1行目: 型情報（headerKinds）
+  var typeRow = [];
+  for (var c=0; c<cols; c++) {
+    typeRow.push(headerKinds && headerKinds[c] ? headerKinds[c] : 'SCALAR');
+  }
+  values.push(typeRow);
+  
+  // 2-5行目: L1,L2,L3,L4のパス情報
+  for (var r=1; r<depth; r++) {
     var row = [];
-    for (var c=0;c<cols;c++) {
-      // パスが4段未満の場合は空文字で埋める
-      row.push(headerPaths[c][r] || '');
+    for (var c=0; c<cols; c++) {
+      // パスが4段未満の場合は"NULL"で埋める
+      row.push(headerPaths[c][r-1] || 'NULL');
     }
     values.push(row);
   }
+  
   sheet.clear();
   sheet.getRange(1,1,depth,cols).setValues(values);
   sheet.setFrozenRows(depth);
+  
   // スタイル
   var headerRange = sheet.getRange(1,1,depth,cols);
   headerRange.setBackground('#1f2937');
   headerRange.setFontColor('#ffffff');
   headerRange.setFontWeight('bold');
   headerRange.setHorizontalAlignment('center');
-  for (var c2=1;c2<=cols;c2++) sheet.setColumnWidth(c2, 180);
+  for (var c2=1; c2<=cols; c2++) sheet.setColumnWidth(c2, 180);
+  
   return depth;
 }
 
-// 既存ヘッダー（4段固定）を取得
+// 既存ヘッダー（5行固定）を取得: 1行目=型情報, 2-5行目=パス
 function readHeaderPaths_(sheet, headerRows) {
   var lastCol = sheet.getLastColumn();
-  if (lastCol === 0 || headerRows === 0) return [];
-  // 4段固定に対応：headerRowsが4以外でも4段として読み取る
-  var actualRows = Math.max(headerRows, 4);
+  if (lastCol === 0 || headerRows === 0) return { paths: [], kinds: [] };
+  // 5行固定に対応：headerRowsが5以外でも5段として読み取る
+  var actualRows = Math.max(headerRows, 5);
   var vals = sheet.getRange(1,1,actualRows,lastCol).getValues();
   var paths = [];
-  for (var c=0;c<lastCol;c++) {
+  var kinds = [];
+  
+  for (var c=0; c<lastCol; c++) {
+    // 1行目: 型情報
+    var kind = (vals[0] && vals[0][c]) ? vals[0][c].toString() : 'SCALAR';
+    kinds.push(kind);
+    
+    // 2-5行目: パス情報 (L1,L2,L3,L4)
     var path = [];
-    for (var r=0;r<4;r++) { // 4段固定で読み取り
-      var cell = (vals[r] && vals[r][c]) ? vals[r][c].toString() : '';
-      path.push(cell);
+    for (var r=1; r<5; r++) { // 2-5行目を読み取り
+      var cell = (vals[r] && vals[r][c]) ? vals[r][c].toString() : 'NULL';
+      if (cell !== 'NULL' && cell !== '') {
+        path.push(cell);
+      }
     }
-    // 末尾空串を削除
-    while (path.length>0 && path[path.length-1]==='') path.pop();
     paths.push(path);
   }
-  return paths;
+  return { paths: paths, kinds: kinds };
 }
 
 // パスをカノニカル文字列へ（キー）
@@ -179,6 +198,48 @@ function pathKey_(path){ return path.join('›'); }
 
 // パス配列の辞書順ソート（安定）
 function sortPaths_(paths){ return paths.slice().sort(function(a,b){ var A=pathKey_(a), B=pathKey_(b); return A<B?-1:A>B?1:0; }); }
+
+// パスから型情報を生成
+function generateHeaderKinds_(headerPaths, flatData) {
+  var kinds = [];
+  var pathValueMap = {};
+  
+  // flatDataから各パスの値の種類を収集
+  if (flatData && flatData.length > 0) {
+    flatData.forEach(function(rowFlat) {
+      rowFlat.forEach(function(item) {
+        var pathKey = pathKey_(item[0]);
+        var value = item[1];
+        if (!pathValueMap[pathKey]) pathValueMap[pathKey] = [];
+        pathValueMap[pathKey].push(value);
+      });
+    });
+  }
+  
+  // 各パスに対して型を決定
+  headerPaths.forEach(function(path) {
+    var pathKey = pathKey_(path);
+    var values = pathValueMap[pathKey] || [];
+    var kind = 'SCALAR'; // デフォルト
+    
+    // 値のパターンから型を推定
+    for (var i = 0; i < values.length; i++) {
+      var val = values[i];
+      if (val === true || val === 1 || val === '1') {
+        // 存在フラグの可能性
+        kind = 'EXISTENSE';
+        break;
+      } else if (typeof val === 'string' && val.match(/^\[.*\]$/)) {
+        // 配列リテラル文字列
+        kind = 'LIST';
+        break;
+      }
+    }
+    kinds.push(kind);
+  });
+  
+  return kinds;
+}
 
 // 受付データを保存（多段ヘッダー対応）
 function saveReceptionData(payload) {
@@ -191,11 +252,14 @@ function saveReceptionData(payload) {
     var headerRows = sheet.getFrozenRows();
     if (sheet.getLastRow() <= headerRows) {
       // シート新規 or 空 → ヘッダー作成
-      headerRows = createNestedHeaders_(sheet, headerPaths);
+      var headerKinds = generateHeaderKinds_(headerPaths, [flat]);
+      headerRows = createNestedHeaders_(sheet, headerPaths, headerKinds);
     }
 
     // 現在のヘッダーを取得
-    var current = readHeaderPaths_(sheet, headerRows);
+    var headerInfo = readHeaderPaths_(sheet, headerRows);
+    var current = headerInfo.paths;
+    var currentKinds = headerInfo.kinds;
     var keyToCol = {};
     for (var i=0;i<current.length;i++) keyToCol[pathKey_(current[i])] = i+1; // 1-based col
 
@@ -206,7 +270,9 @@ function saveReceptionData(payload) {
       var allPaths = current.concat(newPaths);
       // すべてを再並べ替えして書き直す（列増分を右端に追加）
       var sorted = sortPaths_(allPaths);
-      createNestedHeaders_(sheet, sorted); // ヘッダー全体を書き直し
+      var allFlat = [flat]; // 現在のデータを含める
+      var allKinds = generateHeaderKinds_(sorted, allFlat);
+      createNestedHeaders_(sheet, sorted, allKinds); // ヘッダー全体を書き直し
       // 再マップ
       keyToCol = {};
       for (var j=0;j<sorted.length;j++) keyToCol[pathKey_(sorted[j])] = j+1;
@@ -258,7 +324,9 @@ function saveReceptionData(payload) {
         if (newPaths2.length>0){
           var allPaths2 = current.concat(newPaths2);
           var sorted2 = sortPaths_(allPaths2);
-          createNestedHeaders_(sheet, sorted2);
+          var allFlat2 = [flat]; // 更新されたデータを含める
+          var allKinds2 = generateHeaderKinds_(sorted2, allFlat2);
+          createNestedHeaders_(sheet, sorted2, allKinds2);
           keyToCol = {};
           for (var j2=0;j2<sorted2.length;j2++) keyToCol[pathKey_(sorted2[j2])] = j2+1;
         }
@@ -318,7 +386,8 @@ function unflattenFromPaths_(entries) {
 function getReceptionById(id) {
   var sheet = getReceptionSheet_();
   var headerRows = sheet.getFrozenRows();
-  var current = readHeaderPaths_(sheet, headerRows);
+  var headerInfo = readHeaderPaths_(sheet, headerRows);
+  var current = headerInfo.paths;
   var keyToCol = {};
   for (var i=0;i<current.length;i++) keyToCol[pathKey_(current[i])] = i+1;
   var idCol = keyToCol[pathKey_(['システム','ID'])];
@@ -344,7 +413,8 @@ function getReceptionById(id) {
 function listReceptionIndex() {
   var sheet = getReceptionSheet_();
   var headerRows = sheet.getFrozenRows();
-  var current = readHeaderPaths_(sheet, headerRows);
+  var headerInfo = readHeaderPaths_(sheet, headerRows);
+  var current = headerInfo.paths;
   var keyToCol = {};
   for (var i=0;i<current.length;i++) keyToCol[pathKey_(current[i])] = i+1;
   var idCol = keyToCol[pathKey_(['システム','ID'])] || null;
@@ -480,7 +550,7 @@ function debugSpreadsheetInfo() {
   }
 }
 
-// ======= 汎用 JSON ⇔ シート 変換（4層ヘッダー） =======
+// ======= 汎用 JSON ⇔ シート 変換（5行ヘッダー：1行目=型, 2-5行目=4層構造） =======
 
 // 指定シートを取得/作成
 function getOrCreateSheet_(name) {
@@ -493,7 +563,7 @@ function getOrCreateSheet_(name) {
 
 // JSON(配列 or オブジェクト) → シート
 // data: Object | Object[]
-// 仕様: 4層ヘッダーにフラット化して列を作成し、各行へ値を書き込む
+// 仕様: 5行ヘッダー（1行目=型情報, 2-5行目=4層構造）にフラット化して列を作成し、各行へ値を書き込む
 function jsonToSheet(sheetName, data) {
   try {
     var sheet = getOrCreateSheet_(sheetName);
@@ -510,8 +580,9 @@ function jsonToSheet(sheetName, data) {
     var allPaths = Object.keys(allPathsSet).map(function(k){ return allPathsSet[k]; });
     allPaths = sortPaths_(allPaths);
 
-    // ヘッダー作成（4段固定）
-    var headerRows = createNestedHeaders_(sheet, allPaths);
+    // ヘッダー作成（5行固定：1行目=型情報, 2-5行目=L1,L2,L3,L4）
+    var headerKinds = generateHeaderKinds_(allPaths, flattenedRows);
+    var headerRows = createNestedHeaders_(sheet, allPaths, headerKinds);
 
     // 列マップ
     var keyToCol = {};
@@ -546,8 +617,10 @@ function jsonToSheet(sheetName, data) {
 function sheetToJson(sheetName) {
   try {
     var sheet = getOrCreateSheet_(sheetName);
-    var headerRows = Math.max(4, sheet.getFrozenRows() || 0);
-    var paths = readHeaderPaths_(sheet, headerRows);
+    var headerRows = Math.max(5, sheet.getFrozenRows() || 0);
+    var headerInfo = readHeaderPaths_(sheet, headerRows);
+    var paths = headerInfo.paths;
+    var kinds = headerInfo.kinds;
     if (!paths || paths.length === 0) return [];
     var lastRow = sheet.getLastRow();
     if (lastRow <= headerRows) return [];
@@ -693,6 +766,7 @@ function testCreateDataSheet() {
   var sheet = getOrCreateSheet_('受付データ');
   // 最低限のヘッダー
   var headers = [ ['システム','ID'], ['システム','作成日時'], ['システム','更新日時'] ];
-  createNestedHeaders_(sheet, headers);
+  var headerKinds = ['SCALAR', 'SCALAR', 'SCALAR']; // 基本的な型情報
+  createNestedHeaders_(sheet, headers, headerKinds);
   return '受付データ シートを初期化しました';
 }
