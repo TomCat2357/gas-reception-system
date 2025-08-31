@@ -34,6 +34,7 @@ Example flow: `clasp push && clasp open` for editing, or `bash deploy.sh` to pub
 - PRs should include: clear summary, related issues, test steps, and screenshots/GIFs for UI changes.
 - Do not include personal credentials or unrelated reformatting. Do not force-deploy from a PR.
 
+
 ## Security & Configuration
 - Do not change `.clasp.json` `scriptId` without coordination; it binds to a specific script.
 - Avoid hardcoding secrets; use `PropertiesService` for configuration.
