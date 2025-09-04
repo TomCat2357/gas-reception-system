@@ -32,6 +32,18 @@ function doGet(e) {
       .setTitle('📝 受付入力フォーム')
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   }
+  if (page === 'csv_converter') {
+    return HtmlService.createTemplateFromFile('reception_form')
+      .evaluate()
+      .setTitle('📄 CSV to JSON フォーム定義変換')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  }
+  if (page === 'test_csv') {
+    return HtmlService.createTemplateFromFile('test_csv_converter')
+      .evaluate()
+      .setTitle('🧪 CSV to JSON 変換テスト')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  }
   
   return HtmlService.createTemplateFromFile('webapp')
     .evaluate()
@@ -791,6 +803,164 @@ function debugWriteRawJson(sheetName, jsonText) {
   return jsonToSheet(String(sheetName), parsed);
 }
 
+// ======= CSV to JSON Converter Test Functions =======
+
+/**
+ * CSV変換機能の総合テスト
+ * @return {Object} テスト結果
+ */
+function testCSVConverter() {
+  var results = {
+    success: true,
+    totalTests: 0,
+    passedTests: 0,
+    failedTests: 0,
+    testResults: [],
+    summary: ''
+  };
+  
+  function addTestResult(testName, passed, expected, actual, error) {
+    results.totalTests++;
+    if (passed) {
+      results.passedTests++;
+    } else {
+      results.failedTests++;
+      results.success = false;
+    }
+    
+    results.testResults.push({
+      name: testName,
+      passed: passed,
+      expected: expected,
+      actual: actual,
+      error: error || null
+    });
+  }
+  
+  try {
+    // Test 1: parseCSVCell - 基本分割
+    var cell1 = parseCSVCell('氏名/re:^.{1,40}$/姓と名の間は空白1つ');
+    var expected1 = { title: '氏名', type: 're:^.{1,40}$', hint: '姓と名の間は空白1つ' };
+    addTestResult('parseCSVCell - 基本分割', 
+      cell1.title === expected1.title && cell1.type === expected1.type && cell1.hint === expected1.hint,
+      expected1, cell1);
+    
+    // Test 2: parseCSVCell - 部分省略
+    var cell2 = parseCSVCell('X/display:満年齢');
+    var expected2 = { title: 'X', type: 'display:満年齢', hint: null };
+    addTestResult('parseCSVCell - 部分省略', 
+      cell2.title === expected2.title && cell2.type === expected2.type && cell2.hint === expected2.hint,
+      expected2, cell2);
+    
+    // Test 3: parseCSVCell - タイトルのみ
+    var cell3 = parseCSVCell('T2');
+    var expected3 = { title: 'T2', type: null, hint: null };
+    addTestResult('parseCSVCell - タイトルのみ', 
+      cell3.title === expected3.title && cell3.type === expected3.type && cell3.hint === expected3.hint,
+      expected3, cell3);
+    
+    // Test 4: escapeSlashes - エスケープ処理
+    var escaped = escapeSlashes('test\\/path\\/to\\/file');
+    var expectedEscaped = 'test/path/to/file';
+    addTestResult('escapeSlashes - エスケープ処理', 
+      escaped === expectedEscaped, expectedEscaped, escaped);
+    
+    // Test 5: validateFormStructure - 正常なツリー
+    var validTree = {
+      title: 'ROOT',
+      children: [
+        { title: 'S1', type: 'selector:RADIO' },
+        { title: 'S2', type: 'selector:RADIO' }
+      ]
+    };
+    var validation1 = validateFormStructure(validTree);
+    addTestResult('validateFormStructure - 正常なツリー', 
+      validation1.valid === true, true, validation1.valid);
+    
+    // Test 6: validateFormStructure - 混在エラー
+    var invalidTree = {
+      title: 'ROOT',
+      children: [
+        { title: 'S1', type: 'selector:RADIO' },
+        { title: 'S2', type: 're:^[0-9]+$' }
+      ]
+    };
+    var validation2 = validateFormStructure(invalidTree);
+    addTestResult('validateFormStructure - 混在エラー検出', 
+      validation2.valid === false, false, validation2.valid);
+    
+    // Test 7: parseCSVFormDefinition - 仕様書正常例
+    var csvNormal = 'L1,L2,L3,L4,L5,L6,L7,L8,L9\n' +
+                   'Block_B1,,,,,,,,\n' +
+                   'X/display:満年齢,,,,,,,,\n' +
+                   ',,S1/selector:RADIO,,,,,,,\n' +
+                   ',,S2/selector:RADIO,,,,,,,\n' +
+                   ',,S3/selector:RADIO,T1/selector:RADIO,,,,,,\n' +
+                   ',,S3/selector:RADIO,T2/selector:RADIO,text/re:^.{0,20}$,,,,';
+    
+    var result1 = parseCSVFormDefinition(csvNormal);
+    addTestResult('parseCSVFormDefinition - 仕様書正常例', 
+      result1.success === true, true, result1.success, result1.error);
+    
+    // Test 8: parseCSVFormDefinition - エラー例（混在）
+    var csvError = 'L1,L2,L3,L4,L5,L6,L7,L8,L9\n' +
+                   'Block_X,,,,,,,,\n' +
+                   'Q1,,,,,,,,\n' +
+                   ',S1/selector:RADIO,,,,,,,\n' +
+                   ',S2/re:^[0-9]+$,,,,,,,';
+    
+    var result2 = parseCSVFormDefinition(csvError);
+    addTestResult('parseCSVFormDefinition - エラー例（混在）', 
+      result2.success === false, false, result2.success);
+    
+    // Test 9: parseCSVFormDefinition - 無効な正規表現
+    var csvInvalidRegex = 'L1,L2,L3,L4,L5,L6,L7,L8,L9\n' +
+                         'Block_X,,,,,,,,\n' +
+                         'field/re:[invalid,,,,,,,';
+    
+    var result3 = parseCSVFormDefinition(csvInvalidRegex);
+    addTestResult('parseCSVFormDefinition - 無効な正規表現', 
+      result3.success === false, false, result3.success);
+    
+    // Test 10: parseCSVFormDefinition - 空のCSV
+    var result4 = parseCSVFormDefinition('');
+    addTestResult('parseCSVFormDefinition - 空のCSV', 
+      result4.success === false, false, result4.success);
+    
+  } catch (error) {
+    addTestResult('テスト実行中エラー', false, 'エラーなし', error.toString(), error.toString());
+  }
+  
+  results.summary = results.passedTests + '/' + results.totalTests + ' テスト通過 (' + 
+                   Math.round((results.passedTests / results.totalTests) * 100) + '%)';
+  
+  return results;
+}
+
+/**
+ * 特定のCSVデータでのテスト実行
+ * @param {string} csvData - テスト用CSVデータ
+ * @return {Object} テスト結果
+ */
+function testSpecificCSV(csvData) {
+  try {
+    var result = parseCSVFormDefinition(csvData);
+    return {
+      success: true,
+      conversionSuccess: result.success,
+      data: result.data,
+      error: result.error,
+      message: result.message
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.toString(),
+      message: 'テスト実行でエラーが発生しました'
+    };
+  }
+}
+
 // 互換: デバッグページのシート作成テスト用
 function testCreateDataSheet() {
   var sheet = getOrCreateSheet_('受付データ');
@@ -799,4 +969,317 @@ function testCreateDataSheet() {
   var headerKinds = ['SCALAR', 'SCALAR', 'SCALAR']; // 基本的な型情報
   createNestedHeaders_(sheet, headers, headerKinds);
   return '受付データ シートを初期化しました';
+}
+
+// ======= CSV to JSON Form Definition Converter =======
+
+/**
+ * エスケープされたスラッシュを復元する
+ * @param {string} value - 処理対象の文字列
+ * @return {string} エスケープ解除された文字列
+ */
+function escapeSlashes(value) {
+  if (!value || typeof value !== 'string') return value;
+  return value.replace(/\\\//g, '/');
+}
+
+/**
+ * CSVセル値をtitle/type/hintに分割
+ * @param {string} cellValue - CSVセルの値
+ * @return {Object} {title, type, hint}
+ */
+function parseCSVCell(cellValue) {
+  if (!cellValue || typeof cellValue !== 'string') {
+    return { title: null, type: null, hint: null };
+  }
+  
+  // エスケープ処理後にスラッシュで分割（最大2回）
+  var unescaped = escapeSlashes(cellValue);
+  var parts = unescaped.split('/');
+  
+  return {
+    title: parts[0] || null,
+    type: parts[1] || null,
+    hint: parts[2] || null
+  };
+}
+
+/**
+ * 解析済み行データからノードツリーを構築
+ * @param {Array} parsedRows - 解析済み行データの配列
+ * @return {Object} ルートノード
+ */
+function buildNodeTree(parsedRows) {
+  if (!parsedRows || parsedRows.length === 0) {
+    throw new Error('パース済みデータが空です');
+  }
+  
+  var nodes = new Map(); // ノードキー → ノードオブジェクト
+  var nodesByParent = new Map(); // 親ノードキー → 子ノード配列
+  
+  // 各行を処理
+  for (var rowIdx = 0; rowIdx < parsedRows.length; rowIdx++) {
+    var row = parsedRows[rowIdx];
+    
+    // 各列（L1-L9）を処理
+    for (var colIdx = 0; colIdx < 9; colIdx++) {
+      var cell = row[colIdx];
+      if (!cell || !cell.title) continue;
+      
+      // 親ノードを探索
+      var parentNode = null;
+      var parentKey = null;
+      
+      if (colIdx > 0) {
+        // 同行の左列をチェック
+        for (var leftCol = colIdx - 1; leftCol >= 0; leftCol--) {
+          if (row[leftCol] && row[leftCol].title) {
+            parentKey = getNodeKey(rowIdx, leftCol, row[leftCol].title, row[leftCol].type);
+            parentNode = nodes.get(parentKey);
+            break;
+          }
+        }
+        
+        // 左列に親がない場合、上の行を遡る
+        if (!parentNode && colIdx > 0) {
+          for (var upRow = rowIdx - 1; upRow >= 0; upRow--) {
+            var upRowData = parsedRows[upRow];
+            if (upRowData[colIdx - 1] && upRowData[colIdx - 1].title) {
+              parentKey = getNodeKey(upRow, colIdx - 1, upRowData[colIdx - 1].title, upRowData[colIdx - 1].type);
+              parentNode = nodes.get(parentKey);
+              break;
+            }
+          }
+        }
+      }
+      
+      // 現在のノードキーを生成
+      var nodeKey = getNodeKey(rowIdx, colIdx, cell.title, cell.type);
+      
+      // 既存ノードがあるかチェック（マージ対象）
+      var existingNode = nodes.get(nodeKey);
+      if (!existingNode) {
+        // 新規ノード作成
+        var newNode = {
+          title: cell.title,
+          type: cell.type,
+          hint: cell.hint,
+          children: []
+        };
+        
+        // type, hintがnullの場合は省略
+        if (!newNode.type) delete newNode.type;
+        if (!newNode.hint) delete newNode.hint;
+        
+        nodes.set(nodeKey, newNode);
+        
+        // 親子関係を登録
+        if (parentNode) {
+          if (!nodesByParent.has(parentKey)) {
+            nodesByParent.set(parentKey, []);
+          }
+          nodesByParent.get(parentKey).push(newNode);
+          parentNode.children.push(newNode);
+        }
+      }
+    }
+  }
+  
+  // ルートノードを探す（親がないノード）
+  var rootNodes = [];
+  for (var [key, node] of nodes) {
+    var hasParent = false;
+    for (var [parentKey, children] of nodesByParent) {
+      if (children.includes(node)) {
+        hasParent = true;
+        break;
+      }
+    }
+    if (!hasParent) {
+      rootNodes.push(node);
+    }
+  }
+  
+  if (rootNodes.length === 0) {
+    throw new Error('ルートノードが見つかりません');
+  }
+  
+  if (rootNodes.length === 1) {
+    return rootNodes[0];
+  }
+  
+  // 複数のルートがある場合は仮想ルートを作成
+  return {
+    title: 'ROOT',
+    children: rootNodes
+  };
+}
+
+/**
+ * ノードの一意キーを生成
+ * @param {number} row - 行番号
+ * @param {number} col - 列番号  
+ * @param {string} title - タイトル
+ * @param {string} type - タイプ
+ * @return {string} ノードキー
+ */
+function getNodeKey(row, col, title, type) {
+  return col + ':' + (title || '') + ':' + (type || '');
+}
+
+/**
+ * フォーム構造をバリデーション
+ * @param {Object} nodeTree - ノードツリー
+ * @return {Object} バリデーション結果
+ */
+function validateFormStructure(nodeTree) {
+  var errors = [];
+  
+  function validateNode(node, path) {
+    if (!node) return;
+    
+    var currentPath = path ? path + ' > ' + node.title : node.title;
+    
+    // typeの語彙チェック
+    if (node.type) {
+      var validTypes = /^(selector:(RADIO|CHECKBOX|DROPDOWN)|re:.+|display:.+)$/;
+      if (!validTypes.test(node.type)) {
+        errors.push('無効なtype: ' + node.type + ' at ' + currentPath);
+      }
+      
+      // 正規表現の妥当性チェック
+      if (node.type.startsWith('re:')) {
+        try {
+          var pattern = node.type.substring(3);
+          new RegExp(pattern);
+        } catch (e) {
+          errors.push('無効な正規表現: ' + node.type + ' at ' + currentPath + ' - ' + e.message);
+        }
+      }
+    }
+    
+    // 子ノードの選択肢グループチェック
+    if (node.children && node.children.length > 0) {
+      var selectorChildren = node.children.filter(function(child) {
+        return child.type && child.type.startsWith('selector:');
+      });
+      
+      if (selectorChildren.length > 0) {
+        // 選択肢グループの混在チェック
+        var selectorTypes = selectorChildren.map(function(child) {
+          return child.type;
+        });
+        var uniqueTypes = selectorTypes.filter(function(type, index) {
+          return selectorTypes.indexOf(type) === index;
+        });
+        
+        if (uniqueTypes.length > 1) {
+          errors.push('選択肢グループ内でselector種別が混在: ' + uniqueTypes.join(', ') + ' at ' + currentPath);
+        }
+        
+        // 非selector要素の混入チェック
+        var nonSelectorChildren = node.children.filter(function(child) {
+          return !child.type || !child.type.startsWith('selector:');
+        });
+        
+        if (nonSelectorChildren.length > 0) {
+          errors.push('選択肢グループに非selector要素が混入 at ' + currentPath);
+        }
+      }
+    }
+    
+    // 子ノードを再帰的にバリデーション
+    if (node.children) {
+      node.children.forEach(function(child) {
+        validateNode(child, currentPath);
+      });
+    }
+  }
+  
+  validateNode(nodeTree, '');
+  
+  return {
+    valid: errors.length === 0,
+    errors: errors
+  };
+}
+
+/**
+ * CSV形式のフォーム定義をJSONに変換
+ * @param {string} csvContent - CSV形式の文字列
+ * @return {Object} 変換結果
+ */
+function parseCSVFormDefinition(csvContent) {
+  try {
+    if (!csvContent || typeof csvContent !== 'string') {
+      throw new Error('CSVコンテンツが無効です');
+    }
+    
+    // CSVをパース（簡易実装 - Google Apps ScriptのUtilities.parseCsv()を使用予定）
+    var lines = csvContent.split('\n').filter(function(line) {
+      return line.trim().length > 0;
+    });
+    
+    if (lines.length === 0) {
+      throw new Error('CSVデータが空です');
+    }
+    
+    // ヘッダー行をチェック
+    var headerLine = lines[0];
+    var expectedHeader = 'L1,L2,L3,L4,L5,L6,L7,L8,L9';
+    if (!headerLine.includes('L1') || !headerLine.includes('L9')) {
+      throw new Error('CSVヘッダーが正しくありません。L1,L2,...,L9の形式である必要があります');
+    }
+    
+    // データ行をパース
+    var parsedRows = [];
+    for (var i = 1; i < lines.length; i++) {
+      var line = lines[i].trim();
+      if (!line) continue;
+      
+      // CSV行を9列に分割（簡易実装）
+      var cells = line.split(',');
+      while (cells.length < 9) {
+        cells.push('');
+      }
+      
+      var parsedRow = [];
+      for (var j = 0; j < 9; j++) {
+        var cellValue = cells[j] ? cells[j].trim() : '';
+        // ダブルクォートを削除（CSV標準）
+        if (cellValue.startsWith('"') && cellValue.endsWith('"')) {
+          cellValue = cellValue.slice(1, -1).replace(/""/g, '"');
+        }
+        parsedRow.push(parseCSVCell(cellValue));
+      }
+      parsedRows.push(parsedRow);
+    }
+    
+    if (parsedRows.length === 0) {
+      throw new Error('有効なデータ行がありません');
+    }
+    
+    // ノードツリーを構築
+    var nodeTree = buildNodeTree(parsedRows);
+    
+    // バリデーション
+    var validation = validateFormStructure(nodeTree);
+    if (!validation.valid) {
+      throw new Error('バリデーションエラー: ' + validation.errors.join(', '));
+    }
+    
+    return {
+      success: true,
+      data: nodeTree,
+      message: 'CSV to JSON変換が完了しました'
+    };
+    
+  } catch (error) {
+    console.error('parseCSVFormDefinition error:', error);
+    return {
+      success: false,
+      error: error.message || error.toString(),
+      message: 'CSV to JSON変換に失敗しました'
+    };
+  }
 }

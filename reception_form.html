@@ -653,6 +653,25 @@ ${t==='A:生物' && opt==='個別案件相談' && renderConsultationTypes.includ
             })()}</div>
             ${state._ui.alert ? `<div class="alert ${state._ui.alert.type==='success'?'success':'error'}">${state._ui.alert.msg}</div>` : ''}
           </div>
+
+          <div class="card">
+            <h2>📄 CSV to JSON フォーム定義変換</h2>
+            <div class="muted">CSV形式のフォーム定義をJSONに変換します（仕様書 v1.0準拠）</div>
+            <div class="field">
+              <span class="label">CSVファイル</span>
+              <input type="file" id="csvFile" accept=".csv,text/csv" onchange="onCSVFileChange(this)">
+            </div>
+            <div class="field">
+              <span class="label">CSVテキスト直接入力</span>
+              <textarea id="csvInput" placeholder="L1,L2,L3,L4,L5,L6,L7,L8,L9&#10;Block_B1,,,,,,,,&#10;X/display:満年齢,,,,,,,," rows="6" oninput="onCSVTextChange(this.value)"></textarea>
+            </div>
+            <div class="actions" style="margin-top: 10px; display: flex; gap: 10px;">
+              <button class="btn primary" onclick="convertCSVToJSON()">🔄 JSON変換</button>
+              <button class="btn ghost" onclick="downloadJSON()" id="downloadBtn" disabled>💾 JSON保存</button>
+              <button class="btn ghost" onclick="clearCSVConverter()">🗑️ クリア</button>
+            </div>
+            <div id="csvConversionResult" style="margin-top: 10px;"></div>
+          </div>
         </div>
       `;
       // Restore scroll position
@@ -784,6 +803,106 @@ ${t==='A:生物' && opt==='個別案件相談' && renderConsultationTypes.includ
     window.addEventListener('load', function(){ try{ console.log('[reception_form] window.load'); var r=document.getElementById('root'); if (r && !r.firstChild) render(); } catch(err){ showFatalError(err && err.message ? err.message : err); } });
     // Fallback timer: ensure something renders even if events are blocked
     setTimeout(function(){ try{ console.log('[reception_form] fallback timer firing'); if (document.getElementById('root') && !document.getElementById('root').children.length) render(); } catch(err){ showFatalError(err && err.message ? err.message : err); } }, 2000);
+
+    // CSV to JSON Converter Functions
+    let csvConverterState = {
+      csvContent: '',
+      jsonResult: null,
+      errors: []
+    };
+
+    function onCSVFileChange(input) {
+      const file = input.files[0];
+      if (!file) return;
+      
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const content = e.target.result;
+        csvConverterState.csvContent = content;
+        document.getElementById('csvInput').value = content;
+        console.log('CSV file loaded:', content.substring(0, 100));
+      };
+      reader.readAsText(file, 'UTF-8');
+    }
+
+    function onCSVTextChange(value) {
+      csvConverterState.csvContent = value;
+      console.log('CSV text changed:', value.substring(0, 100));
+    }
+
+    function convertCSVToJSON() {
+      if (!csvConverterState.csvContent.trim()) {
+        showCSVResult('CSVデータを入力してください', 'error');
+        return;
+      }
+
+      const resultDiv = document.getElementById('csvConversionResult');
+      resultDiv.innerHTML = '<div class="muted">変換中...</div>';
+
+      google.script.run
+        .withSuccessHandler(function(result) {
+          console.log('CSV conversion result:', result);
+          if (result.success) {
+            csvConverterState.jsonResult = result.data;
+            csvConverterState.errors = [];
+            showCSVResult('✅ 変換成功！', 'success');
+            document.getElementById('downloadBtn').disabled = false;
+            
+            // JSON結果を表示
+            const jsonBox = `<div class="jsonbox" style="margin-top: 10px; max-height: 300px;">${JSON.stringify(result.data, null, 2).replace(/</g,'&lt;')}</div>`;
+            document.getElementById('csvConversionResult').innerHTML += jsonBox;
+          } else {
+            csvConverterState.errors = [result.error];
+            showCSVResult('❌ 変換失敗: ' + result.error, 'error');
+            document.getElementById('downloadBtn').disabled = true;
+          }
+        })
+        .withFailureHandler(function(error) {
+          console.error('CSV conversion error:', error);
+          showCSVResult('❌ 変換エラー: ' + error.message, 'error');
+          document.getElementById('downloadBtn').disabled = true;
+        })
+        .parseCSVFormDefinition(csvConverterState.csvContent);
+    }
+
+    function showCSVResult(message, type) {
+      const resultDiv = document.getElementById('csvConversionResult');
+      const alertClass = type === 'success' ? 'success' : 'error';
+      resultDiv.innerHTML = `<div class="alert ${alertClass}">${message}</div>`;
+    }
+
+    function downloadJSON() {
+      if (!csvConverterState.jsonResult) {
+        showCSVResult('変換結果がありません', 'error');
+        return;
+      }
+
+      const jsonString = JSON.stringify(csvConverterState.jsonResult, null, 2);
+      const blob = new Blob([jsonString], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'form-definition-' + new Date().toISOString().slice(0, 19).replace(/:/g, '-') + '.json';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      showCSVResult('JSONファイルをダウンロードしました', 'success');
+    }
+
+    function clearCSVConverter() {
+      csvConverterState = {
+        csvContent: '',
+        jsonResult: null,
+        errors: []
+      };
+      document.getElementById('csvFile').value = '';
+      document.getElementById('csvInput').value = '';
+      document.getElementById('csvConversionResult').innerHTML = '';
+      document.getElementById('downloadBtn').disabled = true;
+    }
   </script>
 </head>
 <body>
