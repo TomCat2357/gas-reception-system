@@ -654,24 +654,7 @@ ${t==='A:生物' && opt==='個別案件相談' && renderConsultationTypes.includ
             ${state._ui.alert ? `<div class="alert ${state._ui.alert.type==='success'?'success':'error'}">${state._ui.alert.msg}</div>` : ''}
           </div>
 
-          <div class="card">
-            <h2>📄 CSV to JSON フォーム定義変換</h2>
-            <div class="muted">CSV形式のフォーム定義をJSONに変換します（仕様書 v1.0準拠）</div>
-            <div class="field">
-              <span class="label">CSVファイル</span>
-              <input type="file" id="csvFile" accept=".csv,text/csv" onchange="onCSVFileChange(this)">
-            </div>
-            <div class="field">
-              <span class="label">CSVテキスト直接入力</span>
-              <textarea id="csvInput" placeholder="L1,L2,L3,L4,L5,L6,L7,L8,L9&#10;Block_B1,,,,,,,,&#10;X/display:満年齢,,,,,,,," rows="6" oninput="onCSVTextChange(this.value)"></textarea>
-            </div>
-            <div class="actions" style="margin-top: 10px; display: flex; gap: 10px;">
-              <button class="btn primary" onclick="convertCSVToJSON()">🔄 JSON変換</button>
-              <button class="btn ghost" onclick="downloadJSON()" id="downloadBtn" disabled>💾 JSON保存</button>
-              <button class="btn ghost" onclick="clearCSVConverter()">🗑️ クリア</button>
-            </div>
-            <div id="csvConversionResult" style="margin-top: 10px;"></div>
-          </div>
+          
         </div>
       `;
       // Restore scroll position

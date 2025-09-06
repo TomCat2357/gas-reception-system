@@ -18,6 +18,12 @@ function doGet(e) {
   
   // デバッグモードのチェック
   const page = e.parameter.page || 'main';
+  if (page === 'form_builder') {
+    return HtmlService.createTemplateFromFile('form_builder')
+      .evaluate()
+      .setTitle('🧩 CSV→JSON→HTML フォーム生成')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  }
   
   if (page === 'debug') {
     return HtmlService.createTemplateFromFile('debug')
@@ -889,14 +895,15 @@ function testCSVConverter() {
     addTestResult('validateFormStructure - 混在エラー検出', 
       validation2.valid === false, false, validation2.valid);
     
-    // Test 7: parseCSVFormDefinition - 仕様書正常例
+    // Test 7: parseCSVFormDefinition - 仕様書正常例（サーバ仕様に準拠）
     var csvNormal = 'L1,L2,L3,L4,L5,L6,L7,L8,L9\n' +
-                   'Block_B1,,,,,,,,\n' +
-                   'X/display:満年齢,,,,,,,,\n' +
-                   ',,S1/selector:RADIO,,,,,,,\n' +
-                   ',,S2/selector:RADIO,,,,,,,\n' +
-                   ',,S3/selector:RADIO,T1/selector:RADIO,,,,,,\n' +
-                   ',,S3/selector:RADIO,T2/selector:RADIO,text/re:^.{0,20}$,,,,';
+                   'フォーム,,,,,,,,\n' +
+                   ',基本情報/display:入力必須,,,,,,,,\n' +
+                   ',,性別/selector:RADIO,,,,,,,\n' +
+                   ',,,男性/selector:RADIO,,,,,,\n' +
+                   ',,,女性/selector:RADIO,,,,,,\n' +
+                   ',年齢/re:^\\d{1,3}$,,,,,,,\n' +
+                   ',備考/re:^.{0,200}$,,,,,,,';
     
     var result1 = parseCSVFormDefinition(csvNormal);
     addTestResult('parseCSVFormDefinition - 仕様書正常例', 
@@ -1268,7 +1275,7 @@ function parseCSVFormDefinition(csvContent) {
       throw new Error('バリデーションエラー: ' + validation.errors.join(', '));
     }
     
-    return {
+  return {
       success: true,
       data: nodeTree,
       message: 'CSV to JSON変換が完了しました'
@@ -1282,4 +1289,175 @@ function parseCSVFormDefinition(csvContent) {
       message: 'CSV to JSON変換に失敗しました'
     };
   }
+}
+
+// ======= CSV -> HTML (GAS側) =======
+
+/**
+ * ノードツリーから縦並び/インデント/動的展開付きHTMLを生成
+ * @param {Object} model - { title, type?, hint?, children[] }
+ * @return {{success:boolean, html?:string, error?:string}}
+ */
+function generateFormHtmlFromNodeTree_(model) {
+  try {
+    model = model || { title: 'ROOT', children: [] };
+    function esc(s){ return String(s == null ? '' : s).replace(/[&<>]/g, function(ch){ return ({'&':'&amp;','<':'&lt;','>':'&gt;'}[ch]); }); }
+    var css = [
+      ':root{--bg:#f6f8fb;--card:#fff;--text:#111827;--muted:#6b7280;--primary:#2563eb;--border:#e5e7eb;}',
+      '*{box-sizing:border-box;}',
+      'body{margin:0;background:linear-gradient(120deg,#eef2ff,#fdf2f8);font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Hiragino Kaku Gothic ProN,Meiryo,Arial,sans-serif;color:var(--text);}',
+      '.container{max-width:1200px;margin:0 auto;padding:20px;}',
+      '.header{display:flex;align-items:center;justify-content:space-between;gap:12px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px 16px;box-shadow:0 8px 24px rgba(0,0,0,.06);}',
+      '.title{font-size:18px;font-weight:700;}',
+      '.blocks{display:flex;flex-direction:column;gap:14px;margin-top:14px;}',
+      '.block{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;box-shadow:0 8px 24px rgba(0,0,0,.06);}',
+      '.block h2{margin:0 0 8px;font-size:16px;color:#2563eb;}',
+      '.step{margin:10px 0;}',
+      '.label{font-weight:600;margin-bottom:6px;display:flex;align-items:center;gap:8px;}',
+      '.hint-badge{font-size:12px;color:#2563eb;border:1px solid #c7d2fe;background:#eef2ff;border-radius:999px;padding:2px 8px;}',
+      '.options{display:flex;flex-direction:column;gap:8px;align-items:flex-start;}',
+      '.chip{display:block;border:1px solid var(--border);background:#fff;border-radius:10px;padding:8px 10px;}',
+      'input,textarea,select{width:100%;max-width:600px;border:1px solid var(--border);border-radius:10px;padding:8px 10px;background:#fafafa;}'
+    ].join('\n');
+
+    var html = [];
+    html.push('<!DOCTYPE html>');
+    html.push('<html lang="ja">');
+    html.push('<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">');
+    html.push('<title>フォーム生成 (CSVより)</title>');
+    html.push('<style>'+css+'</style></head>');
+    html.push('<body><div class="container">');
+    html.push('<div class="header"><div class="title">フォーム生成 (CSVより)</div><div class="actions"><button class="btn" id="btn-reset">リセット</button><button class="btn" id="btn-export">入力値をJSONで取得</button></div></div>');
+    html.push('<div class="blocks" id="blocks">');
+
+    var idSeq = 0;
+    function renderNode(node, depth){
+      depth = depth || 0;
+      var hasChildren = Array.isArray(node.children) && node.children.length>0;
+      var indent = Math.max(0, depth) * 16;
+
+      if (depth === 0){
+        html.push('<div class="block">');
+        if (node.title){ html.push('<h2>'+esc(node.title)+'</h2>'); }
+        if (node.hint){ html.push('<div class="label">'+esc(node.hint)+'</div>'); }
+        (node.children||[]).forEach(function(ch){ renderNode(ch, depth+1); });
+        html.push('</div>');
+        return;
+      }
+
+      if (hasChildren){
+        var selectorChildren = node.children.filter(function(c){ return c.type && c.type.startsWith('selector:'); });
+        var nonSelectorChildren = node.children.filter(function(c){ return !c.type || !c.type.startsWith('selector:'); });
+        var uniq = selectorChildren.map(function(c){ return c.type; }).filter(function(t,i,a){ return a.indexOf(t)===i; });
+        if (selectorChildren.length>=2 && nonSelectorChildren.length===0 && uniq.length===1){
+          var kind = uniq[0];
+          var groupId = 'g_'+(idSeq++);
+          html.push('<div class="step" style="margin-left:'+indent+'px">');
+          html.push('<div class="label">'+esc(node.title||'')+(node.hint?' <span class="hint-badge" title="'+esc(node.hint)+'">hint</span>':'')+'</div>');
+          if (kind==='selector:RADIO'){
+            var name='r_'+groupId;
+            html.push('<div class="options" data-group="'+groupId+'">');
+            node.children.forEach(function(opt){
+              var optId='opt_'+(idSeq++);
+              var contId='cont_'+optId;
+              html.push('<label class="chip"><input type="radio" name="'+name+'" value="'+esc(opt.title||'')+'" data-role="opt-radio" data-group="'+groupId+'" data-target="'+contId+'">'+esc(opt.title||'')+'</label>');
+              html.push('<div id="'+contId+'" class="opt-children" data-group="'+groupId+'" style="display:none;">');
+              renderNode(opt, depth+1);
+              html.push('</div>');
+            });
+            html.push('</div>');
+          } else if (kind==='selector:CHECKBOX'){
+            var cbGroup=groupId;
+            html.push('<div class="options" data-group="'+cbGroup+'">');
+            node.children.forEach(function(opt){
+              var optId='opt_'+(idSeq++);
+              var contId='cont_'+optId;
+              html.push('<label class="chip"><input type="checkbox" value="'+esc(opt.title||'')+'" data-role="opt-checkbox" data-group="'+cbGroup+'" data-target="'+contId+'">'+esc(opt.title||'')+'</label>');
+              html.push('<div id="'+contId+'" class="opt-children" data-group="'+cbGroup+'" style="display:none;">');
+              renderNode(opt, depth+1);
+              html.push('</div>');
+            });
+            html.push('</div>');
+          } else if (kind==='selector:DROPDOWN'){
+            var selId='sel_'+groupId;
+            html.push('<select id="'+selId+'" data-role="opt-select" data-group="'+groupId+'">');
+            node.children.forEach(function(opt){
+              var optId='opt_'+(idSeq++);
+              var contId='cont_'+optId;
+              html.push('<option value="'+contId+'">'+esc(opt.title||'')+'</option>');
+            });
+            html.push('</select>');
+            node.children.forEach(function(opt){
+              var optId='opt_'+(idSeq++);
+              var contId='cont_'+optId;
+              html.push('<div id="'+contId+'" class="opt-children" data-group="'+groupId+'" style="display:none;">');
+              renderNode(opt, depth+1);
+              html.push('</div>');
+            });
+          }
+          html.push('</div>');
+          return;
+        }
+      }
+
+      if (node.title && (!node.type || node.type.startsWith('display:'))){
+        html.push('<div class="step" style="margin-left:'+indent+'px">');
+        html.push('<div class="label">'+esc(node.title)+(node.hint?' <span class="hint-badge" title="'+esc(node.hint)+'">hint</span>':'')+'</div>');
+        html.push('</div>');
+        (node.children||[]).forEach(function(ch){ renderNode(ch, depth+1); });
+        return;
+      }
+
+      if (node.type && node.type.startsWith('re:')){
+        html.push('<div class="step" style="margin-left:'+indent+'px">');
+        html.push('<div class="label">'+esc(node.title||'')+(node.hint?' <span class="hint-badge" title="'+esc(node.hint)+'">hint</span>':'')+'</div>');
+        html.push('<input type="text">');
+        html.push('</div>');
+        (node.children||[]).forEach(function(ch){ renderNode(ch, depth+1); });
+        return;
+      }
+
+      (node.children||[]).forEach(function(ch){ renderNode(ch, depth+1); });
+    }
+
+    if (model.title==='ROOT' && Array.isArray(model.children)){
+      model.children.forEach(function(ch){ renderNode(ch, 0); });
+    } else {
+      renderNode(model, 0);
+    }
+
+    html.push('</div>');
+    html.push('<script>(function(){\n' +
+      'function getLabelText(label){ if(!label) return ""; var c=label.cloneNode(true); var badges=c.querySelectorAll(\'.hint-badge\'); for(var i=0;i<badges.length;i++){badges[i].remove();} return (c.textContent||\'\').trim(); }\n' +
+      'function resetAll(){ var root=document.getElementById(\'blocks\'); if(!root) return; var inputs=root.querySelectorAll(\'input, textarea, select\'); for(var i=0;i<inputs.length;i++){ var el=inputs[i]; var t=(el.type||\'\').toLowerCase(); if(t===\'radio\'||t===\'checkbox\'){ el.checked=false; } else if(el.tagName===\'SELECT\'){ el.selectedIndex=0; } else { el.value=\'\'; } } }\n' +
+      'function hideGroup(group){ var nodes=document.querySelectorAll(\'.opt-children[data-group="\'+group+\'"]\'); for(var i=0;i<nodes.length;i++){ nodes[i].style.display=\'none\'; } }\n' +
+      'function bindToggles(){\n' +
+      '  var radios=document.querySelectorAll(\'input[data-role=opt-radio]\');\n' +
+      '  for(var i=0;i<radios.length;i++){ radios[i].addEventListener(\'change\', function(){ var g=this.getAttribute(\'data-group\'); hideGroup(g); var t=this.getAttribute(\'data-target\'); var el=document.getElementById(t); if(el) el.style.display=this.checked?\'block\':\'none\'; }); }\n' +
+      '  var cbs=document.querySelectorAll(\'input[data-role=opt-checkbox]\');\n' +
+      '  for(var j=0;j<cbs.length;j++){ cbs[j].addEventListener(\'change\', function(){ var t=this.getAttribute(\'data-target\'); var el=document.getElementById(t); if(el) el.style.display=this.checked?\'block\':\'none\'; }); }\n' +
+      '  var sels=document.querySelectorAll(\'select[data-role=opt-select]\');\n' +
+      '  for(var k=0;k<sels.length;k++){ sels[k].addEventListener(\'change\', function(){ var g=this.getAttribute(\'data-group\'); hideGroup(g); var contId=this.value; var el=document.getElementById(contId); if(el) el.style.display=\'block\'; }); }\n' +
+      '}\n' +
+      'function toJson(){ var root=document.getElementById(\'blocks\'); var steps=root?root.querySelectorAll(\'.step\'):[]; var out={}; function add(key,val){ if(!key) return; if(out.hasOwnProperty(key)){ if(!Array.isArray(out[key])) out[key]=[out[key]]; out[key].push(val); } else { out[key]=val; } } for(var i=0;i<steps.length;i++){ var step=steps[i]; var label=step.querySelector(\'.label\'); var key=getLabelText(label); if(!key) continue; var radios=step.querySelectorAll(\'input[type=radio]\'); if(radios.length){ var chosen=null; for(var r=0;r<radios.length;r++){ if(radios[r].checked){ chosen=radios[r].value; break; } } add(key, chosen); continue; } var checks=step.querySelectorAll(\'input[type=checkbox]\'); if(checks.length){ var vals=[]; for(var c=0;c<checks.length;c++){ if(checks[c].checked) vals.push(checks[c].value); } add(key, vals); continue; } var sel=step.querySelector(\'select\'); if(sel){ var opt=sel.options[sel.selectedIndex]; var val=opt?opt.textContent:sel.value; add(key, val); continue; } var ta=step.querySelector(\'textarea\'); if(ta){ add(key, ta.value); continue; } var txt=step.querySelector(\'input[type=text],input[type=date],input[type=time],input[type=number],input[type=email],input[type=tel],input[type=hidden]\'); if(txt){ add(key, txt.value); continue; } } return out; }\n' +
+      'function downloadJson(data){ try{ var blob=new Blob([JSON.stringify(data,null,2)],{type:\'application/json\'}); var url=URL.createObjectURL(blob); var a=document.createElement(\'a\'); a.href=url; a.download=\'form-inputs.json\'; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url); } catch(e){ alert(\'JSON出力に失敗: \'+e); } }\n' +
+      'var btnReset=document.getElementById(\'btn-reset\'); if(btnReset) btnReset.addEventListener(\'click\', function(){ resetAll(); });\n' +
+      'var btnExport=document.getElementById(\'btn-export\'); if(btnExport) btnExport.addEventListener(\'click\', function(){ var data=toJson(); downloadJson(data); });\n' +
+      'bindToggles();\n' +
+    '})();</script>');
+    html.push('</div></body></html>');
+    return { success:true, html: html.join('') };
+  } catch(e) { return { success:false, error: e.message || String(e) }; }
+}
+
+/**
+ * CSV→MODEL→HTML（GAS公開用）
+ * form_builder.html から google.script.run.generateFormFromCsv(csv) で呼ばれる
+ */
+function generateFormFromCsv(csvText){
+  var parsed = parseCSVFormDefinition(csvText || '');
+  if (!parsed || !parsed.success){ return { success:false, error: parsed && parsed.error || 'parse failed' }; }
+  var html = generateFormHtmlFromNodeTree_(parsed.data);
+  if (!html || !html.success){ return { success:false, error: html && html.error || 'html failed' }; }
+  return { success:true, model: parsed.data, html: html.html };
 }
