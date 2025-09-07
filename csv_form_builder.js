@@ -226,8 +226,13 @@ function generateFormHtml(model) {
       '.label{font-weight:600;margin-bottom:6px;display:flex;align-items:center;gap:8px;}',
       '.hint-badge{font-size:12px;color:#2563eb;border:1px solid #c7d2fe;background:#eef2ff;border-radius:999px;padding:2px 8px;}',
       '.options{display:flex;flex-direction:column;gap:8px;align-items:flex-start;}',
-      '.chip{display:block;border:1px solid var(--border);background:#fff;border-radius:10px;padding:8px 10px;}',
-      'input,textarea,select{width:100%;max-width:600px;border:1px solid var(--border);border-radius:10px;padding:8px 10px;background:#fafafa;}'
+      '.chip{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--border);background:#fff;border-radius:10px;padding:8px 10px;}',
+      '.regex-warning{color:#ef4444;font-size:12px;margin-top:4px;}',
+      // オプション直下に現れる selector 見出しは非表示（重複防止）
+      '.opt-children > .step > .label{display:none;}',
+      'textarea,select,input[type=text],input[type=date],input[type=time],input[type=number],input[type=email],input[type=tel]{width:100%;max-width:600px;border:1px solid var(--border);border-radius:10px;padding:8px 10px;background:#fafafa;}',
+      'input[type=text]:invalid{border-color:#ef4444;}',
+      'input[type=radio],input[type=checkbox]{width:auto;margin:0;}'
     ].join('\n');
 
     var html = [];
@@ -264,6 +269,7 @@ function generateFormHtml(model) {
           var kind = uniq[0];
           var groupId = 'g_'+(idSeq++);
           html.push('<div class="step" style="margin-left:'+indent+'px">');
+          // グループ見出しは常に表示（例: 性別）
           html.push('<div class="label">'+esc(node.title || '') + (node.hint? ' <span class="hint-badge" title="'+esc(node.hint)+'">hint</span>':'' ) + '</div>');
           if (kind==='selector:RADIO'){
             var name='r_'+groupId;
@@ -274,7 +280,7 @@ function generateFormHtml(model) {
               html.push('<label class="chip"><input type="radio" name="'+name+'" value="'+esc(opt.title||'')+'" data-role="opt-radio" data-group="'+groupId+'" data-target="'+contId+'">'+esc(opt.title||'')+'</label>');
               // container for opt children
               html.push('<div id="'+contId+'" class="opt-children" data-group="'+groupId+'" style="display:none;">');
-              // render nested groups starting from this opt node
+              // ネストした selector の表示は標準レンダに委ねる（タイトルの重複はCSSで抑制）
               renderNode(opt, (depth+1));
               html.push('</div>');
             });
@@ -321,11 +327,18 @@ function generateFormHtml(model) {
         (node.children||[]).forEach(function(ch){ renderNode(ch, depth+1); });
         return;
       }
-      // re: 入力項目
+      // re: 入力項目（HTML5 pattern で検証）
       if (node.type && node.type.startsWith('re:')){
+        var pattern = String(node.type.slice(3) || '').trim();
+        // CSVではバックスラッシュが二重になりやすいので、HTML属性用に1つに縮約
+        var htmlPattern = pattern.replace(/\\/g, '\\');
         html.push('<div class="step" style="margin-left:'+indent+'px">');
         html.push('<div class="label">'+esc(node.title||'') + (node.hint? ' <span class="hint-badge" title="'+esc(node.hint)+'">hint</span>':'' ) + '</div>');
-        html.push('<input type="text">');
+        var attrs = ' type="text"';
+        if (pattern) {
+          attrs += ' pattern="'+esc(htmlPattern)+'" title="'+esc('正規表現: '+pattern)+'" data-regex-original="'+esc(pattern)+'"';
+        }
+        html.push('<input'+attrs+'>');
         html.push('</div>');
         (node.children||[]).forEach(function(ch){ renderNode(ch, depth+1); });
         return;
@@ -359,11 +372,14 @@ function generateFormHtml(model) {
       '  var sels=document.querySelectorAll(\'select[data-role=opt-select]\');\n' +
       '  for(var k=0;k<sels.length;k++){ sels[k].addEventListener(\'change\', function(){ var g=this.getAttribute(\'data-group\'); hideGroup(g); var contId=this.value; var el=document.getElementById(contId); if(el) el.style.display=\'block\'; }); }\n' +
       '}\n' +
+      // 正規表現の即時バリデーション（不一致なら元に戻す）
+      'function showWarn(el,msg,pat){ try{ var w=el.nextElementSibling; if(!w || !w.classList || !w.classList.contains(\'regex-warning\')){ w=document.createElement(\'div\'); w.className=\'regex-warning\'; el.parentNode.insertBefore(w, el.nextSibling); } w.textContent=(msg||\'入力形式が正しくありません\')+(pat?\' (\'+pat+\')\':\'\'); w.style.display=\'block\'; clearTimeout(w._t); w._t=setTimeout(function(){ w.style.display=\'none\'; }, 1200); }catch(_){} }\n' +
+      'function bindRegexEnforcers(){ var nodes=document.querySelectorAll(\'input[pattern]\'); for(var i=0;i<nodes.length;i++){ (function(el){ var prev=el.value||\'\'; el.setAttribute(\'data-prev\', prev); function toPartial(p){ try{ var s=p; s=s.replace(/\{\s*(\d+)\s*,\s*(\d+)\s*\}/g, function(_,$1,$2){ return \"{0,\"+($2||$1)+\"}\"; }); s=s.replace(/\$$/, \"\"); return s; }catch(_){ return p; } } function check(val){ var p=el.getAttribute(\'pattern\')||\'\'; var ok=true; try{ var re=new RegExp(p); ok = (val===\'\' ? true : re.test(val)); if(!ok){ var pr=new RegExp(toPartial(p)); ok = (val===\'\' ? true : pr.test(val)); } }catch(e){ ok=true; } if(!ok){ showWarn(el, \"入力がパターンと一致しません\", p); el.setCustomValidity(\'パターン不一致\'); return false; } el.setCustomValidity(\'\'); return true; } el.addEventListener(\'input\', function(e){ var v=el.value||\'\'; if(!check(v)){ var old=el.getAttribute(\'data-prev\')||\'\'; el.value=old; } else { el.setAttribute(\'data-prev\', v); } }); el.addEventListener(\'blur\', function(){ check(el.value||\'\'); }); })(nodes[i]); } }\n' +
       'function toJson(){ var root=document.getElementById(\'blocks\'); var steps=root?root.querySelectorAll(\'.step\'):[]; var out={}; function add(key,val){ if(!key) return; if(out.hasOwnProperty(key)){ if(!Array.isArray(out[key])) out[key]=[out[key]]; out[key].push(val); } else { out[key]=val; } } for(var i=0;i<steps.length;i++){ var step=steps[i]; var label=step.querySelector(\'.label\'); var key=getLabelText(label); if(!key) continue; var radios=step.querySelectorAll(\'input[type=radio]\'); if(radios.length){ var chosen=null; for(var r=0;r<radios.length;r++){ if(radios[r].checked){ chosen=radios[r].value; break; } } add(key, chosen); continue; } var checks=step.querySelectorAll(\'input[type=checkbox]\'); if(checks.length){ var vals=[]; for(var c=0;c<checks.length;c++){ if(checks[c].checked) vals.push(checks[c].value); } add(key, vals); continue; } var sel=step.querySelector(\'select\'); if(sel){ var opt=sel.options[sel.selectedIndex]; var val=opt?opt.textContent:sel.value; add(key, val); continue; } var ta=step.querySelector(\'textarea\'); if(ta){ add(key, ta.value); continue; } var txt=step.querySelector(\'input[type=text],input[type=date],input[type=time],input[type=number],input[type=email],input[type=tel],input[type=hidden]\'); if(txt){ add(key, txt.value); continue; } } return out; }\n' +
       'function downloadJson(data){ try{ var blob=new Blob([JSON.stringify(data,null,2)],{type:\'application/json\'}); var url=URL.createObjectURL(blob); var a=document.createElement(\'a\'); a.href=url; a.download=\'form-inputs.json\'; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url); } catch(e){ alert(\'JSON出力に失敗: \'+e); } }\n' +
       'var btnReset=document.getElementById(\'btn-reset\'); if(btnReset) btnReset.addEventListener(\'click\', function(){ resetAll(); });\n' +
       'var btnExport=document.getElementById(\'btn-export\'); if(btnExport) btnExport.addEventListener(\'click\', function(){ var data=toJson(); downloadJson(data); });\n' +
-      'bindToggles();\n' +
+      'bindToggles(); bindRegexEnforcers();\n' +
     '})();</script>');
     html.push('</div></body></html>');
     return { success: true, html: html.join('') };
