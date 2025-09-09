@@ -2,7 +2,7 @@
 
 ## Project Structure & Modules
 - `Code.js`/`.gs`: Server-side Apps Script (V8) logic and data access.
-- `webapp.html`, `form.html`, `debug.html`, `simple_test.html`: Client views/templates.
+- `views/*.html`: Client views/templates (webapp, reception_form, debug, etc.).
 - `appsscript.json`: GAS project settings (timezone, webapp access, runtime).
 - `.clasp.json`: clasp project configuration (scriptId, extensions).
 - `deploy.sh`: Helper script to push and deploy the web app.

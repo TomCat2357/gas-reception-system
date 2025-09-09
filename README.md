@@ -95,13 +95,23 @@ clasp deploy --description "受付データ管理アプリ v1.0"
 ```
 gws_clasp/
 ├── Code.js                 # メインのサーバーサイドロジック
-├── webapp.html             # Webアプリのメインページ
-├── form.html               # スプレッドシート内編集用フォーム  
-├── reception_form.html     # 受付データ専用入力フォーム
-├── debug.html              # デバッグ機能ページ
+├── views/                  # クライアント側ビュー(HTML)
+│   ├── webapp.html         # Webアプリのメインページ
+│   ├── reception_form.html # 受付データ専用入力フォーム
+│   ├── debug.html          # デバッグ機能ページ
+│   ├── form_builder.html   # CSV→フォームビルダー
+│   └── test_csv_converter.html # CSV変換テスト
+├── commands/               # ローカル実行用スクリプト(デプロイ対象外)
+│   ├── gen_sample.js
+│   └── csv_form_builder.js
+├── docs/                   # ドキュメント/生成物/ローカルテスト(デプロイ対象外)
+│   ├── template_example.html
+│   ├── template_example.generated.html
+│   └── csv2html_local_test.html
 ├── deploy.sh               # 自動デプロイスクリプト
 ├── appsscript.json         # プロジェクト設定
 ├── .clasp.json             # CLASP設定
+├── .claspignore            # CLASP除外設定
 ├── jsonとシートの仕様.md    # 受付データのJSON仕様書
 ├── CLAUDE.md               # Claude用プロジェクト説明
 └── README.md               # このファイル
@@ -126,14 +136,14 @@ gws_clasp/
 
 1. [`jsonとシートの仕様.md`](./jsonとシートの仕様.md) を参照してデータ構造を理解
 2. `Code.js`の`createHeaders()`関数でスプレッドシート列構造を修正
-3. `reception_form.html`で入力フォームのUIを調整
+3. `views/reception_form.html`で入力フォームのUIを調整
 4. JSON変換ロジックを`Code.js`で対応
 
 ### 🎨 デザインの変更
 
-- **メインアプリ**: `webapp.html`内のCSSを編集
-- **受付フォーム**: `reception_form.html`内のCSSを編集  
-- **デバッグページ**: `debug.html`内のCSSを編集
+- **メインアプリ**: `views/webapp.html`内のCSSを編集
+- **受付フォーム**: `views/reception_form.html`内のCSSを編集  
+- **デバッグページ**: `views/debug.html`内のCSSを編集
 
 ### 🔧 機能の追加
 

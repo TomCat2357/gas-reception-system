@@ -10,7 +10,7 @@ function doGet(e) {
   // パラメータが存在しない場合のエラーハンドリング
   if (!e || !e.parameter) {
     console.log('doGet called without parameters - returning main page');
-    return HtmlService.createTemplateFromFile('webapp')
+    return HtmlService.createTemplateFromFile('views/webapp')
       .evaluate()
       .setTitle('📊 データ管理アプリ')
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
@@ -19,39 +19,39 @@ function doGet(e) {
   // デバッグモードのチェック
   const page = e.parameter.page || 'main';
   if (page === 'form_builder') {
-    return HtmlService.createTemplateFromFile('form_builder')
+    return HtmlService.createTemplateFromFile('views/form_builder')
       .evaluate()
       .setTitle('🧩 CSV→JSON→HTML フォーム生成')
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   }
   
   if (page === 'debug') {
-    return HtmlService.createTemplateFromFile('debug')
+    return HtmlService.createTemplateFromFile('views/debug')
       .evaluate()
       .setTitle('🔧 デバッグページ - データ管理アプリ')
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   }
   if (page === 'reception') {
-    var file = 'reception_form';
+    var file = 'views/reception_form';
     return HtmlService.createTemplateFromFile(file)
       .evaluate()
       .setTitle('📝 受付入力フォーム')
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   }
   if (page === 'csv_converter') {
-    return HtmlService.createTemplateFromFile('reception_form')
+    return HtmlService.createTemplateFromFile('views/reception_form')
       .evaluate()
       .setTitle('📄 CSV to JSON フォーム定義変換')
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   }
   if (page === 'test_csv') {
-    return HtmlService.createTemplateFromFile('test_csv_converter')
+    return HtmlService.createTemplateFromFile('views/test_csv_converter')
       .evaluate()
       .setTitle('🧪 CSV to JSON 変換テスト')
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   }
   
-  return HtmlService.createTemplateFromFile('webapp')
+  return HtmlService.createTemplateFromFile('views/webapp')
     .evaluate()
     .setTitle('📊 データ管理アプリ')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
@@ -98,7 +98,7 @@ function openWebApp() {
 
 // シンプルなテストページを表示
 function showSimpleTest() {
-  const htmlOutput = HtmlService.createTemplateFromFile('simple_test')
+  const htmlOutput = HtmlService.createTemplateFromFile('views/simple_test')
     .evaluate()
     .setWidth(600)
     .setHeight(400);

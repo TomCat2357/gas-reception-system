@@ -14,11 +14,11 @@ function loadScriptToContext(file) {
 }
 
 function main() {
-  const csvPath = 'template_example.csv';
-  const outPath = 'template_example.generated.html';
+  const csvPath = 'docs/template_example.csv';
+  const outPath = 'docs/template_example.generated.html';
   const csv = fs.readFileSync(csvPath, 'utf8');
 
-  const ctx = loadScriptToContext('csv_form_builder.js');
+  const ctx = loadScriptToContext('commands/csv_form_builder.js');
   if (typeof ctx.generateFormFromCsv !== 'function') {
     throw new Error('generateFormFromCsv not found after loading csv_form_builder.js');
   }
@@ -31,4 +31,3 @@ function main() {
 }
 
 main();
-

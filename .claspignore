@@ -1,0 +1,21 @@
+# Local docs and scripts
+docs/**
+commands/**
+
+# Editor and tooling
+.vscode/**
+.claude/**
+.serena/**
+.kiro/**
+
+# Temporary and archived
+archived_configs/**
+temp_document/**
+
+# Misc files not needed in GAS
+digest.txt
+男性
+README.md
+AGENTS.md
+CLAUDE.md
+
