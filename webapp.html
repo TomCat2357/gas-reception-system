@@ -4,7 +4,7 @@
   <base target="_top" href="<?= ScriptApp.getService().getUrl() ?>">
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>📊 受付データ検索</title>
+  <title>📊 データ検索</title>
   <style>
     * {
       box-sizing: border-box;
@@ -404,8 +404,8 @@
   <div class="container">
     <!-- ヘッダー -->
     <div class="header">
-      <h1>📊 受付データ検索 <span class="version-badge">ver.20250906_165947</span></h1>
-      <p>受付データの検索と編集（下部に結果表示）</p>
+      <h1>📊 データ検索 <span class="version-badge">ver.20250911_181423</span></h1>
+      <p>データの検索と編集（下部に結果表示）</p>
     </div>
     
     <!-- コントロール -->
@@ -430,20 +430,20 @@
     <!-- データ表示エリア -->
     <div class="data-container">
       <div class="data-header">
-        <div class="data-title">📋 受付データ一覧</div>
+        <div class="data-title">📋 データ一覧</div>
         <div class="data-count" id="dataCount">-</div>
       </div>
       
       <div id="dataContent">
         <div class="loading">
           <div class="spinner"></div>
-          <div>受付データを読み込み中...</div>
+          <div>データを読み込み中...</div>
         </div>
       </div>
     </div>
   </div>
   <div style="text-align:center; margin-top:12px; color:#666; font-size:12px;">
-    バージョン: ver.20250906_165947
+    バージョン: ver.20250911_181423
   </div>
   
   <!-- データ編集モーダル -->
@@ -921,7 +921,7 @@
       document.getElementById('modalTitle').textContent = '✏️ データ編集';
       document.getElementById('editRowIndex').value = index;
       
-      // 受付データ以外の編集フィールドは廃止しました
+      // データ以外の編集フィールドは廃止しました
       
       showModal();
     }
@@ -944,8 +944,8 @@
     
     // データを保存
     function saveData() {
-      // この画面での編集は無効化されています（受付データ専用へ移行）
-      showAlert('この画面での編集は無効化されています（受付データをご利用ください）', 'error');
+      // この画面での編集は無効化されています（データ専用へ移行）
+      showAlert('この画面での編集は無効化されています（データをご利用ください）', 'error');
       return;
       
       // Set loading state

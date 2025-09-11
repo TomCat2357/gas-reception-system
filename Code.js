@@ -102,23 +102,27 @@ function showSimpleTest() {
     .evaluate()
     .setWidth(600)
     .setHeight(400);
-  
+
   SpreadsheetApp.getUi().showModalDialog(htmlOutput, '🔧 簡単テスト');
 }
 
 // ======= ユーティリティ関数 =======
 
+// シート名定数
+// データ本体を保存するシート
+const DATA_SHEET_NAME = 'データ';
+// フォーム構造を定義するシート
+const STRUCTURE_SHEET_NAME = '構造';
 
-// ========= 受付（多段ヘッダー） =========
 
-// 受付用シートを取得/作成
-function getReceptionSheet_() {
+// ========= データ（多段ヘッダー） =========
+
+// データ用シートを取得/作成
+function getDataSheet_() {
   const ssId = PropertiesService.getScriptProperties().getProperty('DATA_SPREADSHEET_ID');
   const ss = ssId ? SpreadsheetApp.openById(ssId) : SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName('受付データ');
-  if (!sheet) {
-    sheet = ss.insertSheet('受付データ');
-  }
+  let sheet = ss.getSheetByName(DATA_SHEET_NAME);
+  if (!sheet) sheet = ss.insertSheet(DATA_SHEET_NAME);
   return sheet;
 }
 
@@ -276,10 +280,10 @@ function generateHeaderKinds_(headerPaths, flatData) {
   return kinds;
 }
 
-// 受付データを保存（多段ヘッダー対応）
+// データを保存（多段ヘッダー対応）
 function saveReceptionData(payload) {
   try {
-    var sheet = getReceptionSheet_();
+    var sheet = getDataSheet_();
     var flat = flattenToPaths_(payload, []); // [[path[], value]]
     // ヘッダー候補生成（値は列作成のため path のみ抽出）
     var headerPaths = sortPaths_(flat.map(function(x){return x[0];}));
@@ -385,10 +389,10 @@ function saveReceptionData(payload) {
     }
     sheet.getRange(writeRow, 1, 1, lastCol).setValues([rowVals]);
     var savedId = keyToCol[idKey] ? rowVals[keyToCol[idKey]-1] : (payload && payload.システム && payload.システム.ID);
-    return { ok: true, row: writeRow, id: savedId, message: '✅ 受付データを保存しました（行 ' + writeRow + '）' };
+    return { ok: true, row: writeRow, id: savedId, message: '✅ データを保存しました（行 ' + writeRow + '）' };
   } catch (err) {
     console.error('saveReceptionData error:', err);
-    throw new Error('受付データ保存に失敗: ' + err);
+    throw new Error('データ保存に失敗: ' + err);
   }
 }
 
@@ -419,7 +423,7 @@ function unflattenFromPaths_(entries) {
 
 // IDで1件取得（多段ヘッダー）
 function getReceptionById(id) {
-  var sheet = getReceptionSheet_();
+  var sheet = getDataSheet_();
   var headerRows = sheet.getFrozenRows();
   var headerInfo = readHeaderPaths_(sheet, headerRows);
   var current = headerInfo.paths;
@@ -446,7 +450,7 @@ function getReceptionById(id) {
 
 // 一覧向け（簡易フラット配列）
 function listReceptionIndex() {
-  var sheet = getReceptionSheet_();
+  var sheet = getDataSheet_();
   var headerRows = sheet.getFrozenRows();
   var headerInfo = readHeaderPaths_(sheet, headerRows);
   var current = headerInfo.paths;
@@ -549,7 +553,7 @@ function listReceptionIndex() {
   });
 }
 
-// 旧シートの削除ユーティリティは廃止しました（受付データのみを対象とするため）
+// 旧シートの削除ユーティリティは廃止しました（データのみを対象とするため）
 
 // スプレッドシート情報をデバッグ用に取得
 function debugSpreadsheetInfo() {
@@ -705,7 +709,7 @@ function pingTest() {
 // データの安全取得（存在しない場合はnull）
 function getAllDataSafe() {
   try {
-    return sheetToJson('受付データ');
+    return sheetToJson(DATA_SHEET_NAME);
   } catch (e) {
     return null;
   }
@@ -713,7 +717,7 @@ function getAllDataSafe() {
 
 function debugGetAllDataStep() {
   try {
-    var data = sheetToJson('受付データ');
+    var data = sheetToJson(DATA_SHEET_NAME);
     return 'rows=' + data.length;
   } catch (e) {
     return 'error: ' + e;
@@ -970,12 +974,17 @@ function testSpecificCSV(csvData) {
 
 // 互換: デバッグページのシート作成テスト用
 function testCreateDataSheet() {
-  var sheet = getOrCreateSheet_('受付データ');
+  var sheet = getOrCreateSheet_(DATA_SHEET_NAME);
   // 最低限のヘッダー
   var headers = [ ['システム','ID'], ['システム','作成日時'], ['システム','更新日時'] ];
   var headerKinds = ['SCALAR', 'SCALAR', 'SCALAR']; // 基本的な型情報
   createNestedHeaders_(sheet, headers, headerKinds);
-  return '受付データ シートを初期化しました';
+
+  var struct = getOrCreateSheet_(STRUCTURE_SHEET_NAME);
+  struct.clear();
+  struct.appendRow(['L1','L2','L3','L4','L5','L6','L7','L8','L9']);
+
+  return DATA_SHEET_NAME + ' と ' + STRUCTURE_SHEET_NAME + ' シートを初期化しました';
 }
 
 // ======= CSV to JSON Form Definition Converter =======
@@ -1456,6 +1465,69 @@ function generateFormHtmlFromNodeTree_(model) {
  */
 function generateFormFromCsv(csvText){
   var parsed = parseCSVFormDefinition(csvText || '');
+  if (!parsed || !parsed.success){ return { success:false, error: parsed && parsed.error || 'parse failed' }; }
+  var html = generateFormHtmlFromNodeTree_(parsed.data);
+  if (!html || !html.success){ return { success:false, error: html && html.error || 'html failed' }; }
+  return { success:true, model: parsed.data, html: html.html };
+}
+
+/**
+ * 構造シート（L1〜L9 の階層定義）を解析
+ * 各セルは "title/type/hint" 形式で記述する
+ */
+function parseStructureSheet(){
+  try{
+    var sheet = getOrCreateSheet_(STRUCTURE_SHEET_NAME);
+    var values = sheet.getDataRange().getValues();
+
+    // シートが空ならヘッダーを作成して空データを返す
+    if (values.length === 0){
+      sheet.appendRow(['L1','L2','L3','L4','L5','L6','L7','L8','L9']);
+      return { success:true, data:{ title:'ROOT', children:[] } };
+    }
+
+    var expected = ['L1','L2','L3','L4','L5','L6','L7','L8','L9'];
+    var header = values[0];
+    var valid = expected.every(function(h, i){ return header[i] === h; });
+    if (!valid){
+      sheet.clear();
+      sheet.appendRow(expected);
+      return { success:true, data:{ title:'ROOT', children:[] } };
+    }
+
+    if (values.length < 2){
+      return { success:true, data:{ title:'ROOT', children:[] } };
+    }
+
+    var parsedRows = [];
+    for (var r=1; r<values.length; r++){
+      var row = values[r];
+      if (!row || row.join('') === '') continue;
+      var parsedRow = [];
+      for (var c=0; c<9; c++){
+        var cellValue = row[c] ? String(row[c]).trim() : '';
+        parsedRow.push(parseCSVCell(cellValue));
+      }
+      parsedRows.push(parsedRow);
+    }
+
+    if (parsedRows.length === 0){
+      return { success:true, data:{ title:'ROOT', children:[] } };
+    }
+
+    var nodeTree = buildNodeTree(parsedRows);
+    var validation = validateFormStructure(nodeTree);
+    if (!validation.valid){
+      throw new Error('バリデーションエラー: ' + validation.errors.join(', '));
+    }
+    return { success:true, data: nodeTree };
+  }catch(e){
+    return { success:false, error: e.message || String(e) };
+  }
+}
+
+function generateFormFromStructureSheet(){
+  var parsed = parseStructureSheet();
   if (!parsed || !parsed.success){ return { success:false, error: parsed && parsed.error || 'parse failed' }; }
   var html = generateFormHtmlFromNodeTree_(parsed.data);
   if (!html || !html.success){ return { success:false, error: html && html.error || 'html failed' }; }
