@@ -415,7 +415,12 @@
         <span class="search-icon">🔍</span>
       </div>
       <a class="btn btn-primary" href="?page=reception">📝 新規受付</a>
+      <? if (showFormBuilder) { ?>
       <a class="btn btn-secondary" href="?page=form_builder">🧩 フォームビルダー</a>
+      <? } ?>
+      <? if (showDebugLink) { ?>
+      <a class="btn btn-secondary" href="?page=debug">🔧 デバッグページ</a>
+      <? } ?>
       <button class="btn btn-secondary" onclick="loadData()">
         🔄 更新
       </button>
@@ -446,28 +451,7 @@
     バージョン: <?= versionString ?>
   </div>
   
-  <!-- データ編集モーダル -->
-  <div id="editModal" class="modal">
-    <div class="modal-content">
-      <h3 id="modalTitle">📝 データ編集</h3>
-      <div id="alertArea"></div>
-      
-      <form id="dataForm">
-        <input type="hidden" id="editRowIndex" value="">
-        
-        
-        
-        <div class="modal-buttons">
-          <button type="button" class="btn btn-secondary" onclick="closeModal()">
-            ❌ キャンセル
-          </button>
-          <button type="button" class="btn btn-primary" onclick="saveData()">
-            💾 保存
-          </button>
-        </div>
-      </form>
-    </div>
-  </div>
+  <!-- 旧データ編集モーダルは廃止（受付専用フォームをご利用ください） -->
 
   <script>
     let allData = [];
@@ -902,155 +886,12 @@
         <div class="empty-state">
           <div class="icon">📂</div>
           <h3>${message}</h3>
-          <p>「新規追加」ボタンから最初のデータを登録してください</p>
+          <p><a class="btn btn-primary btn-sm" href="?page=reception">📝 新規受付</a> から登録を開始できます</p>
         </div>
       `;
     }
     
-    // 新規追加モーダルを表示
-    function showAddModal() {
-      document.getElementById('modalTitle').textContent = '➕ 新規データ追加';
-      document.getElementById('editRowIndex').value = '';
-      resetForm();
-      showModal();
-    }
-    
-    // 編集モーダルを表示
-    function showEditModal(index) {
-      const data = allData[index];
-      document.getElementById('modalTitle').textContent = '✏️ データ編集';
-      document.getElementById('editRowIndex').value = index;
-      
-      // 受付データ以外の編集フィールドは廃止しました
-      
-      showModal();
-    }
-    
-    // モーダルを表示
-    function showModal() {
-      document.getElementById('editModal').classList.add('show');
-      clearAlert();
-    }
-    
-    // モーダルを閉じる
-    function closeModal() {
-      document.getElementById('editModal').classList.remove('show');
-    }
-    
-    // フォームをリセット
-    function resetForm() {
-      document.getElementById('dataForm').reset();
-    }
-    
-    // データを保存
-    function saveData() {
-      // この画面での編集は無効化されています（受付データ専用へ移行）
-      showAlert('この画面での編集は無効化されています（受付データをご利用ください）', 'error');
-      return;
-      
-      // Set loading state
-      setLoadingState(true);
-      
-      // Collect form data（無効化）
-      const formData = {};
-      
-      const rowIndex = document.getElementById('editRowIndex').value;
-      
-      console.log('Starting save:', formData, 'rowIndex:', rowIndex);
-      
-      // Set timeout (30 seconds)
-      const timeoutId = setTimeout(() => {
-        setLoadingState(false);
-        showAlert('処理がタイムアウトしました。再度お試しください。', 'error');
-      }, 30000);
-      
-      if (rowIndex === '') {
-        // Add new data
-        console.log('Adding new data...');
-        google.script.run
-          .withSuccessHandler((result) => {
-            clearTimeout(timeoutId);
-            onSaveSuccess(result);
-          })
-          .withFailureHandler((error) => {
-            clearTimeout(timeoutId);
-            onSaveError(error);
-          })
-          .addNewData(formData);
-      } else {
-        // Update existing data
-        console.log('Updating data...');
-        google.script.run
-          .withSuccessHandler((result) => {
-            clearTimeout(timeoutId);
-            onSaveSuccess(result);
-          })
-          .withFailureHandler((error) => {
-            clearTimeout(timeoutId);
-            onSaveError(error);
-          })
-          .updateData(formData, parseInt(rowIndex) + 2);
-      }
-    }
-    
-    // Manage loading state
-    function setLoadingState(isLoading) {
-      const saveBtn = document.querySelector('.modal-buttons .btn-primary');
-      const modalContent = document.querySelector('.modal-content');
-      
-      if (isLoading) {
-        saveBtn.innerHTML = '💾 保存中...';
-        saveBtn.disabled = true;
-        modalContent.style.opacity = '0.7';
-        modalContent.style.pointerEvents = 'none';
-      } else {
-        saveBtn.innerHTML = '💾 保存';
-        saveBtn.disabled = false;
-        modalContent.style.opacity = '1';
-        modalContent.style.pointerEvents = 'auto';
-      }
-    }
-    
-    // Save success handler
-    function onSaveSuccess(message) {
-      console.log('Save success:', message);
-      setLoadingState(false);
-      showAlert(message, 'success');
-      setTimeout(() => {
-        closeModal();
-        loadData();
-      }, 1500);
-    }
-    
-    // Save error handler
-    function onSaveError(error) {
-      console.error('Save error:', error);
-      setLoadingState(false);
-      showAlert('保存中にエラーが発生しました: ' + (error.message || error), 'error');
-    }
-    
-    // 削除確認
-    function confirmDelete(index) {
-      const data = allData[index];
-      const label = `行 ${index+1}`;
-      if (confirm(`「${label}」を削除してもよろしいですか？\nこの操作は取り消せません。`)) {
-        google.script.run
-          .withSuccessHandler(onDeleteSuccess)
-          .withFailureHandler(onDeleteError)
-          .deleteData(index + 2); // ヘッダー分+1、0ベース調整+1
-      }
-    }
-    
-    // 削除成功時
-    function onDeleteSuccess(message) {
-      showAlert(message, 'success');
-      loadData();
-    }
-    
-    // 削除エラー時
-    function onDeleteError(error) {
-      showAlert('削除中にエラーが発生しました: ' + error.message, 'error');
-    }
+    // 旧の追加/編集/削除モーダル機能は廃止（受付フォームで対応）
     
     // デバッグ情報を読み込み
     function loadDebugInfo() {
@@ -1081,7 +922,7 @@
           console.error('Debug info error:', error);
           showAlert('デバッグ情報の取得に失敗しました: ' + (error.message || error), 'error');
         })
-        .debugGetAllData();
+        .debugSpreadsheetInfo();
     }
     
     // アラート表示
@@ -1247,12 +1088,7 @@
         .simpleTest();
     }
     
-    // モーダル外クリックで閉じる
-    document.getElementById('editModal').addEventListener('click', function(e) {
-      if (e.target === this) {
-        closeModal();
-      }
-    });
+    // 旧モーダルは廃止済み
   </script>
 </body>
 </html>

@@ -16,6 +16,8 @@ function doGet(e) {
     console.log('doGet called without parameters - returning main page');
     const t = HtmlService.createTemplateFromFile('views/webapp');
     t.versionString = getJstVersionString_();
+    t.showFormBuilder = isFeatureEnabled_('ENABLE_FORM_BUILDER', false);
+    t.showDebugLink = isFeatureEnabled_('ENABLE_DEBUG_PAGE', false);
     return t.evaluate()
       .setTitle('📊 データ管理アプリ')
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
@@ -23,7 +25,13 @@ function doGet(e) {
   
   // デバッグモードのチェック
   const page = e.parameter.page || 'main';
+  const enableDebug = isFeatureEnabled_('ENABLE_DEBUG_PAGE', false);
+  const enableFormBuilder = isFeatureEnabled_('ENABLE_FORM_BUILDER', false);
+  const enableCsvTest = isFeatureEnabled_('ENABLE_TEST_CSV', false);
   if (page === 'form_builder') {
+    if (!enableFormBuilder) {
+      return HtmlService.createHtmlOutput('<h3>フォームビルダーは無効化されています</h3>');
+    }
     return HtmlService.createTemplateFromFile('views/form_builder')
       .evaluate()
       .setTitle('🧩 CSV→JSON→HTML フォーム生成')
@@ -31,6 +39,9 @@ function doGet(e) {
   }
   
   if (page === 'debug') {
+    if (!enableDebug) {
+      return HtmlService.createHtmlOutput('<h3>デバッグページは無効化されています</h3>');
+    }
     const t = HtmlService.createTemplateFromFile('views/debug');
     t.versionString = getJstVersionString_();
     return t.evaluate()
@@ -56,13 +67,10 @@ function doGet(e) {
       .setTitle('🧱 STRUCTURE フォーム')
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   }
-  if (page === 'csv_converter') {
-    return HtmlService.createTemplateFromFile('views/reception_form')
-      .evaluate()
-      .setTitle('📄 CSV to JSON フォーム定義変換')
-      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
-  }
   if (page === 'test_csv') {
+    if (!enableCsvTest) {
+      return HtmlService.createHtmlOutput('<h3>CSVテストページは無効化されています</h3>');
+    }
     return HtmlService.createTemplateFromFile('views/test_csv_converter')
       .evaluate()
       .setTitle('🧪 CSV to JSON 変換テスト')
@@ -71,6 +79,8 @@ function doGet(e) {
   
   const t = HtmlService.createTemplateFromFile('views/webapp');
   t.versionString = getJstVersionString_();
+  t.showFormBuilder = enableFormBuilder;
+  t.showDebugLink = enableDebug;
   return t.evaluate()
     .setTitle('📊 データ管理アプリ')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
@@ -142,6 +152,23 @@ function getJstVersionString_() {
     var MM = ('0' + d.getUTCMinutes()).slice(-2);
     var SS = ('0' + d.getUTCSeconds()).slice(-2);
     return 'ver.' + yyyy + mm + dd + '_' + HH + MM + SS;
+  }
+}
+
+// ======= 設定/フラグユーティリティ =======
+/**
+ * スクリプトプロパティのフラグを判定する
+ * 許容値: '1','true','yes','on' (大文字小文字無視)
+ * 未設定時は defaultVal を返す
+ */
+function isFeatureEnabled_(key, defaultVal) {
+  try {
+    var v = PropertiesService.getScriptProperties().getProperty(key);
+    if (v == null || v === '') return !!defaultVal;
+    v = String(v).toLowerCase();
+    return v === '1' || v === 'true' || v === 'yes' || v === 'on';
+  } catch (_e) {
+    return !!defaultVal;
   }
 }
 
