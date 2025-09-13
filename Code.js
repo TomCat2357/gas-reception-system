@@ -5,13 +5,18 @@
 
 // ======= Webアプリケーション関連 =======
 
+// 構造シート/フォーム生成用 定数
+const STRUCTURE_SHEET_NAME = 'STRUCTURE';
+const MAX_STRUCTURE_COLS = 9;
+
 // Webアプリのメインページを表示
 function doGet(e) {
   // パラメータが存在しない場合のエラーハンドリング
   if (!e || !e.parameter) {
     console.log('doGet called without parameters - returning main page');
-    return HtmlService.createTemplateFromFile('views/webapp')
-      .evaluate()
+    const t = HtmlService.createTemplateFromFile('views/webapp');
+    t.versionString = getJstVersionString_();
+    return t.evaluate()
       .setTitle('📊 データ管理アプリ')
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   }
@@ -26,16 +31,29 @@ function doGet(e) {
   }
   
   if (page === 'debug') {
-    return HtmlService.createTemplateFromFile('views/debug')
-      .evaluate()
+    const t = HtmlService.createTemplateFromFile('views/debug');
+    t.versionString = getJstVersionString_();
+    return t.evaluate()
       .setTitle('🔧 デバッグページ - データ管理アプリ')
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   }
   if (page === 'reception') {
     var file = 'views/reception_form';
-    return HtmlService.createTemplateFromFile(file)
-      .evaluate()
+    const t = HtmlService.createTemplateFromFile(file);
+    t.versionString = getJstVersionString_();
+    return t.evaluate()
       .setTitle('📝 受付入力フォーム')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  }
+  if (page === 'structure_form') {
+    // STRUCTUREシートからフォームHTMLを生成し、テンプレートへ挿入
+    var refresh = e.parameter.refresh === '1' || e.parameter.refresh === 'true';
+    var formHtml = generateFormFromStructureSheet({ refresh: refresh });
+    const t = HtmlService.createTemplateFromFile('views/structure_form');
+    t.formHtml = formHtml;
+    t.versionString = getJstVersionString_();
+    return t.evaluate()
+      .setTitle('🧱 STRUCTURE フォーム')
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   }
   if (page === 'csv_converter') {
@@ -51,8 +69,9 @@ function doGet(e) {
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   }
   
-  return HtmlService.createTemplateFromFile('views/webapp')
-    .evaluate()
+  const t = HtmlService.createTemplateFromFile('views/webapp');
+  t.versionString = getJstVersionString_();
+  return t.evaluate()
     .setTitle('📊 データ管理アプリ')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
@@ -107,6 +126,24 @@ function showSimpleTest() {
 }
 
 // ======= ユーティリティ関数 =======
+
+// JSTベースのバージョン文字列生成
+function getJstVersionString_() {
+  try {
+    var s = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyyMMdd_HHmmss');
+    return 'ver.' + s;
+  } catch (_e) {
+    // 失敗時はUTCを使用
+    var d = new Date();
+    var yyyy = d.getUTCFullYear();
+    var mm = ('0' + (d.getUTCMonth()+1)).slice(-2);
+    var dd = ('0' + d.getUTCDate()).slice(-2);
+    var HH = ('0' + d.getUTCHours()).slice(-2);
+    var MM = ('0' + d.getUTCMinutes()).slice(-2);
+    var SS = ('0' + d.getUTCSeconds()).slice(-2);
+    return 'ver.' + yyyy + mm + dd + '_' + HH + MM + SS;
+  }
+}
 
 
 // ========= 受付（多段ヘッダー） =========
@@ -1460,4 +1497,224 @@ function generateFormFromCsv(csvText){
   var html = generateFormHtmlFromNodeTree_(parsed.data);
   if (!html || !html.success){ return { success:false, error: html && html.error || 'html failed' }; }
   return { success:true, model: parsed.data, html: html.html };
+}
+
+// ======= STRUCTUREシート → ツリー → HTML =======
+
+/**
+ * STRUCTUREシートを取得（なければ作成）
+ */
+function getStructureSheet_() {
+  return getOrCreateSheet_(STRUCTURE_SHEET_NAME);
+}
+
+/**
+ * STRUCTUREシートの使用範囲を2次元配列で取得（最大 MAX_STRUCTURE_COLS 列）
+ * 文字列はtrimしたものを返す
+ */
+function readStructureGrid_() {
+  var sheet = getStructureSheet_();
+  var lastRow = sheet.getLastRow();
+  var lastCol = Math.min(sheet.getLastColumn(), MAX_STRUCTURE_COLS);
+  if (lastRow === 0 || lastCol === 0) return [];
+  var vals = sheet.getRange(1, 1, lastRow, lastCol).getValues();
+  var out = [];
+  for (var r = 0; r < vals.length; r++) {
+    var row = [];
+    for (var c = 0; c < lastCol; c++) {
+      var v = vals[r][c];
+      row.push(v == null ? '' : String(v).trim());
+    }
+    out.push(row);
+  }
+  return out;
+}
+
+/**
+ * 構造グリッドのMD5署名を計算
+ */
+function getStructureSignature_() {
+  var grid = readStructureGrid_();
+  var payload = JSON.stringify(grid);
+  var bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, payload);
+  var hex = '';
+  for (var i = 0; i < bytes.length; i++) {
+    var b = bytes[i];
+    if (b < 0) b += 256; // convert signed byte to unsigned
+    var h = b.toString(16);
+    if (h.length < 2) h = '0' + h;
+    hex += h;
+  }
+  return hex;
+}
+
+/**
+ * セル文字列を title/type/hint/(4つ目以降) に分割
+ * デリミタは常に '/'
+ */
+function parseStructureCell_(cellText) {
+  if (!cellText || typeof cellText !== 'string') {
+    return { title: null, type: null, hint: null, extras: [] };
+  }
+  var unescaped = escapeSlashes(cellText);
+  var parts = unescaped.split('/');
+  return {
+    title: parts[0] || null,
+    type: parts.length > 1 ? (parts[1] || null) : null,
+    hint: parts.length > 2 ? (parts[2] || null) : null,
+    extras: parts.length > 3 ? parts.slice(3) : []
+  };
+}
+
+/**
+ * STRUCTUREシートからノードツリーを構築
+ * 左→右 親子。親が同行左列にいなければ、左列の上方直近を親とする
+ */
+function parseStructureSheet() {
+  var grid = readStructureGrid_();
+  if (!grid || grid.length === 0) {
+    // 空なら仮想ルートのみ返す
+    return { title: 'ROOT', children: [] };
+  }
+  var parsedRows = [];
+  for (var r = 0; r < grid.length; r++) {
+    var row = [];
+    for (var c = 0; c < MAX_STRUCTURE_COLS; c++) {
+      var cellVal = c < grid[r].length ? grid[r][c] : '';
+      row.push(parseStructureCell_(cellVal));
+    }
+    parsedRows.push(row);
+  }
+  // 既存のビルダーを再利用
+  var nodeTree = buildNodeTree(parsedRows);
+  return nodeTree;
+}
+
+/**
+ * タイトル中の '_' を '__' へエスケープ
+ */
+function escapeUnderscore_(s) {
+  return String(s == null ? '' : s).replace(/_/g, '__');
+}
+
+/**
+ * ツリー全体のIDを祖先タイトル連結で割り当て、重複チェック
+ * 仕様: 祖先→自分のタイトルを '_' 連結（タイトル内 '_' は '__' にエスケープ）
+ * 例: A1-B1-C2 → C2.id = 'A1_B1_C2'
+ */
+function computeAndValidateNodeIds_(root) {
+  var used = Object.create(null);
+  function visit(node, ancestors) {
+    if (!node || !node.title) return;
+    var titleEsc = escapeUnderscore_(node.title);
+    var id = ancestors.length ? (ancestors.join('_') + '_' + titleEsc) : titleEsc;
+    node.id = id;
+    if (used[id]) {
+      throw new Error('ID重複: ' + id + '（タイトル経路の重複）');
+    }
+    used[id] = true;
+    var nextAnc = ancestors.concat(titleEsc);
+    if (Array.isArray(node.children)) {
+      for (var i = 0; i < node.children.length; i++) {
+        visit(node.children[i], nextAnc);
+      }
+    }
+  }
+  // ルート（仮想ROOT）の場合は子から開始
+  if (root && root.title === 'ROOT' && Array.isArray(root.children)) {
+    for (var j = 0; j < root.children.length; j++) {
+      visit(root.children[j], []);
+    }
+  } else {
+    visit(root, []);
+  }
+  return root;
+}
+
+/**
+ * STRUCTUREツリーからシンプルなフォームHTMLを生成
+ * 対応type: text, textarea, number, date, email, checkbox（他はtext扱い）
+ * 子を持つノードは group として fieldset/legend でレンダリング
+ */
+function generateFormHtmlFromStructureTree_(root) {
+  function esc(s){ return String(s == null ? '' : s).replace(/[&<>]/g, function(ch){ return ({'&':'&amp;','<':'&lt;','>':'&gt;'}[ch]); }); }
+  var html = [];
+  html.push('<div class="structure-form" style="display:flex;flex-direction:column;gap:12px;">');
+
+  function renderNode(node, depth){
+    var hasChildren = Array.isArray(node.children) && node.children.length > 0;
+    var type = (node.type || '').toLowerCase();
+    if (hasChildren) {
+      // group container
+      if (node.title && node.title !== 'ROOT') {
+        html.push('<fieldset data-type="group" style="border:1px solid #e5e7eb;border-radius:10px;padding:10px 12px;">');
+        html.push('<legend style="padding:0 6px;color:#2563eb;">' + esc(node.title) + '</legend>');
+      }
+      for (var i=0;i<node.children.length;i++) renderNode(node.children[i], depth+1);
+      if (node.title && node.title !== 'ROOT') html.push('</fieldset>');
+      return;
+    }
+
+    // leaf input
+    var id = node.id || '';
+    var name = id;
+    var hint = node.hint || '';
+    var label = node.title || '';
+    var commonAttr = ' id="' + esc(id) + '" name="' + esc(name) + '" data-title="' + esc(node.title||'') + '" data-type="' + esc(node.type||'') + '" data-hint="' + esc(node.hint||'') + '"';
+    html.push('<div class="form-field" style="display:flex;flex-direction:column;gap:6px;">');
+    if (type === 'checkbox') {
+      html.push('<label style="display:flex;align-items:center;gap:8px;">');
+      html.push('<input type="checkbox"' + commonAttr + ' />');
+      html.push('<span>' + esc(label) + '</span>');
+      html.push('</label>');
+    } else if (type === 'textarea') {
+      html.push('<label for="' + esc(id) + '">' + esc(label) + '</label>');
+      html.push('<textarea' + commonAttr + (hint ? (' placeholder="' + esc(hint) + '"') : '') + '></textarea>');
+    } else if (type === 'number' || type === 'date' || type === 'email' || type === 'text') {
+      html.push('<label for="' + esc(id) + '">' + esc(label) + '</label>');
+      html.push('<input type="' + esc(type || 'text') + '"' + commonAttr + (hint ? (' placeholder="' + esc(hint) + '"') : '') + ' />');
+    } else {
+      // unknown → text
+      html.push('<label for="' + esc(id) + '">' + esc(label) + '</label>');
+      html.push('<input type="text"' + commonAttr + (hint ? (' placeholder="' + esc(hint) + '"') : '') + ' />');
+    }
+    html.push('</div>');
+  }
+
+  if (root && root.title === 'ROOT') {
+    for (var k=0;k<root.children.length;k++) renderNode(root.children[k], 0);
+  } else if (root) {
+    renderNode(root, 0);
+  }
+  html.push('</div>');
+  return html.join('');
+}
+
+/**
+ * STRUCTUREシートからフォームHTMLを生成（シグネチャ比較＋キャッシュ）
+ * @param {{refresh?:boolean}} opts
+ * @return {string} HTML
+ */
+function generateFormFromStructureSheet(opts) {
+  opts = opts || {};
+  var refresh = !!opts.refresh;
+  var sig = getStructureSignature_();
+  var cacheKey = 'form:' + sig;
+  var cache = CacheService.getScriptCache();
+  if (!refresh) {
+    try {
+      var cached = cache.get(cacheKey);
+      if (cached) return cached;
+    } catch (_e) {}
+  }
+
+  // 生成処理
+  var tree = parseStructureSheet();
+  tree = computeAndValidateNodeIds_(tree);
+  var html = generateFormHtmlFromStructureTree_(tree);
+
+  // 保存
+  try { cache.put(cacheKey, html, 21600); } catch (_e2) {}
+  try { PropertiesService.getScriptProperties().setProperty('STRUCTURE_SIGNATURE', sig); } catch(_e3) {}
+  return html;
 }
