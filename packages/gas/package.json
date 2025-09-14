@@ -1,0 +1,17 @@
+{
+  "name": "@gws/gas",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --format=iife --global-name=global --platform=browser --target=es2018 --outfile=../../apps-script/dist/Code.js"
+  },
+  "dependencies": {
+    "@gws/core": "workspace:*"
+  },
+  "devDependencies": {
+    "esbuild": "^0.23.1",
+    "typescript": "^5.5.4"
+  }
+}
+

@@ -1,0 +1,24 @@
+{
+  "name": "gws_clasp-monorepo",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps-script"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "npm run -w packages/core build && npm run -w packages/gas build",
+    "test": "npm run -w packages/core test",
+    "lint": "eslint \"packages/**/src/**/*.{ts,tsx}\" --max-warnings=0 || true",
+    "typecheck": "tsc -p tsconfig.base.json --noEmit"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
+    "eslint": "^8.57.0",
+    "eslint-config-prettier": "^9.1.0",
+    "typescript": "^5.5.4"
+  }
+}
