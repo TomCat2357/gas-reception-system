@@ -1,104 +1,59 @@
-# 📊 受付データ管理 Web アプリ（Apps Script）
+# 📊 Google AppSheetスタイル 受付データ管理アプリ
 
-Google Apps Script(V8) で作成した、受付データの検索・閲覧と、専用フォームによる登録/編集に特化した Web アプリです。
+Google Apps Script 製の Web アプリ。スプレッドシートに **多段（9 層）ヘッダー** で JSON を展開し、受付データを登録・更新できます。
 
-## 🌟 特徴
+## 🌟 概要
 
-- **検索・閲覧に特化**: 高度検索（正規表現/日付比較）に対応した一覧 UI
-- **専用フォームで登録/編集**: `?page=reception` のフォームで入出力を集約
-- **階層データ対応**: 多段ヘッダー（10行固定）と JSON フラット化で柔軟な保存
-- **スプレッドシート連携**: Active or 指定 ID のスプレッドシートへ保存
-- **バージョン表記**: 画面ヘッダー/フッターに `ver.YYYYMMDD_HHMMSS` を自動表示（JST）
+- **Web アプリ + スプレッドシート** 連携（JST バージョン表示付き）
+- **STRUCTURE シートからのフォーム自動生成**（`?page=structure_form`）
+- **受付フォーム（レガシー UI）**（`?page=reception`）
 
-## 📱 機能
+## ✅ 現在の機能
 
-- **受付データの検索/閲覧**: 一覧表示 + 高度検索（フィールド指定・正規表現・日付比較）
-- **受付データの新規/編集**: `?page=reception`（専用フォーム）へ遷移して実施
-- **デバッグ補助**: 疎通テスト/スプレッドシート情報表示（メイン画面のボタン）
+- 受付データの **新規登録 / 更新（編集）**（`saveReceptionData`）
+- 受付データ **1件取得**（`getReceptionById`）
+- 受付データ **一覧取得（要約列生成含む）**（`listReceptionIndex`）
 
-注意: メイン一覧画面内での「直接編集/削除」機能は廃止し、受付フォーム側に集約しました。
+> ※ **削除（Delete）API は未実装**。将来対応予定です（UI の「削除」記述は抑制）。
+> 実装関数は Code.js のとおり：保存（新規/更新）、1件取得、一覧。
 
-## 🚀 セットアップ
+## 🧭 使い方
 
-### 1) デプロイ
+- **メイン**：デプロイ URL
+- **受付フォーム（レガシー）**：`?page=reception`
+- **デバッグ**：`?page=debug`
+- **STRUCTURE フォーム（推奨）**：`?page=structure_form`（`STRUCTURE` シートから自動生成）
+- **CSV 変換テスト**：`?page=test_csv`
 
-推奨（自動）:
-```bash
-bash deploy.sh
-```
+> 旧 `?page=csv_converter` は削除しました（`?page=test_csv` を利用）。
 
-手動:
-```bash
-clasp push
-clasp deploy --description "release"
-```
-
-### 2) 公開設定
-
-Apps Script の「デプロイ」→「新しいデプロイ」→「ウェブアプリ」。
-- 実行ユーザー: 自分
-- アクセスできるユーザー: 全員（用途に応じて調整）
-
-### 3) スクリプトプロパティ（任意）
-
-- `DATA_SPREADSHEET_ID`: 保存先スプレッドシート ID（未設定時は Active）
-- `ENABLE_DEBUG_PAGE`: `1|true` で `?page=debug` ページを有効化（既定: 無効）
-- `ENABLE_FORM_BUILDER`: `1|true` で CSV フォームビルダーを有効化（既定: 無効）
-- `ENABLE_TEST_CSV`: `1|true` で CSV 変換テストページを有効化（既定: 無効）
-
-## 📖 使い方
-
-### メイン画面（`/exec`）
-
-- 検索ボックスにキーワード or 条件式（正規表現/日付比較）を入力
-- 件数表示を確認し、各行の「✏️ 編集」でフォームに遷移
-- 「📝 新規受付」で空のフォームへ
-
-### 受付フォーム（`?page=reception`）
-
-- 受付データの新規作成/編集を行います
-- 保存後はスプレッドシートへ反映され、一覧に表示されます
-
-### デバッグ（任意）
-
-- メイン画面の「📊 スプレッドシート情報」「🔧 サーバー疎通テスト」を利用
-- `ENABLE_DEBUG_PAGE` を有効化すると `?page=debug` ページにもアクセス可能
-
-## 🗂️ 構成
+## 🗂️ ファイル構成（抜粋）
 
 ```
-gws_clasp/
-├── Code.js                 # サーバーサイド（GAS）
+gas-reception-system/
+├── Code.js
 ├── views/
-│   ├── webapp.html         # メイン（検索/閲覧）
-│   ├── reception_form.html # 受付専用フォーム
-│   ├── structure_form.html # STRUCTURE シート→フォーム生成（開発/検証）
-│   ├── debug.html          # デバッグページ（任意）
-│   ├── form_builder.html   # CSV→フォームビルダー（任意/機能フラグ）
-│   └── test_csv_converter.html # CSV 変換テスト（任意/機能フラグ）
-├── deploy.sh               # push + deploy ヘルパー
-├── appsscript.json         # GAS 設定
-├── .clasp.json             # CLASP 設定
-└── README.md               # このファイル
+│   ├── webapp.html
+│   ├── reception_form.html
+│   ├── structure_form.html   # STRUCTURE シート→フォーム生成
+│   ├── debug.html
+│   ├── simple_test.html      # 簡易テストページ
+│   └── test_csv_converter.html
+└── README.md
 ```
 
-## 🧩 実装メモ
+## 🧱 STRUCTURE シート仕様（要点）
 
-- 多段ヘッダーは 10 行固定（1 行目: 型情報, 2–10 行目: L1–L9）
-- シートは存在しなければ作成（`受付データ` など）
-- `webapp.html` ヘッダー/フッターに JST のバージョン文字列を表示（自動）
+- 10 行ヘッダー：1 行目 = 型、2–10 行目 = L1–L9（多段パス）
+- 自動推定：`LIST`/`EXISTENSE` などの型を入力値から推定しヘッダー化
+- `?page=structure_form` で HTML を生成して表示
 
-## 🔧 トラブルシューティング
+## 🧰 スプレッドシート側メニュー
 
-- Web アプリにアクセス不可: デプロイの公開範囲を確認
-- データが保存されない: 実行権限/スプレッドシート権限を確認
-- 表示崩れ: キャッシュクリア or シークレットモードで再試行
+- メニューは **「📝 受付入力」→「🌐 Webアプリを開く」** を提供（GAS メニュー）
 
-## 📄 ライセンス / 貢献
+## 🔧 TODO（今後）
 
-- MIT License
-- Issue/PR 歓迎（Conventional Commits 推奨）
+- 削除 API（行論理削除 or 物理削除）の追加
+- 一覧 API の絞り込み条件・ページング（必要に応じて）
 
----
-
-この README は現行実装に追従しています。旧 UI の「一覧内での編集/削除」記述は廃止しました。

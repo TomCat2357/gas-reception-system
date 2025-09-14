@@ -67,6 +67,8 @@ function doGet(e) {
       .setTitle('🧱 STRUCTURE フォーム')
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   }
+  // ※ 旧: page=csv_converter は reception_form を返すだけの不整合な暫定ルートだったため撤去。
+  //    CSV→JSON 変換の検証は ?page=test_csv で実施可能。
   if (page === 'test_csv') {
     if (!enableCsvTest) {
       return HtmlService.createHtmlOutput('<h3>CSVテストページは無効化されています</h3>');
