@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>📊 受付データ検索</title>
+  <!-- ver.20250914_174420 -->
+  <style>
+    body { font-family: system-ui, sans-serif; padding: 24px; }
+    .version { color:#2563eb; font-size:12px; border:1px solid #c7d2fe; background:#e8f0fe; padding:2px 6px; border-radius:999px }
+  </style>
+  <?!= HtmlService.createHtmlOutputFromFile('views/webui_loader').getContent(); ?>
+  <!-- webui_loader is optional; safe to ignore if missing -->
+  <script>
+    // Tiny smoke test for GAS bridge
+    async function ping() {
+      const el = document.getElementById('ping');
+      try {
+        if (google && google.script && google.script.run) {
+          google.script.run.withSuccessHandler(() => el.textContent = 'GAS OK').listReceptionIndex();
+        } else {
+          el.textContent = 'Local OK';
+        }
+      } catch (e) {
+        el.textContent = 'Error';
+      }
+    }
+    window.addEventListener('DOMContentLoaded', ping);
+  </script>
+  <script>
+    // minimal stub to demonstrate webui adapter
+    window.saveFromUI = function() {
+      alert('This is a placeholder UI. Implemented via packages/webui later.');
+    }
+  </script>
+  </head>
+<body>
+  <h1>📊 受付データ検索 <span class="version"><?!= versionString ?></span></h1>
+  <p id="ping">-</p>
+  <button onclick="saveFromUI()">Dummy Save</button>
+  <div style="margin-top:12px; color:#666; font-size:12px;">バージョン: <?!= versionString ?></div>
+</body>
+</html>
+

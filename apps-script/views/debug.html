@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>🔧 デバッグページ</title></head>
+<body>
+  <h1>🔧 デバッグページ</h1>
+  <pre id="env"></pre>
+  <script>
+    document.getElementById('env').textContent = JSON.stringify({
+      hasGoogle: !!(window.google && google.script && google.script.run)
+    }, null, 2);
+  </script>
+  <div style="font-size:12px;color:#666">バージョン: <?!= versionString ?></div>
+</body></html>
+

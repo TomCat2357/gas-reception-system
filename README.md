@@ -57,3 +57,29 @@ gas-reception-system/
 - 削除 API（行論理削除 or 物理削除）の追加
 - 一覧 API の絞り込み条件・ページング（必要に応じて）
 
+## 🧪 Monorepo（TypeScript）開発/CI
+
+- ルートは npm workspaces を使用し、`packages/*` と `apps-script/` を管理
+- コアロジック（Zod/構造解析）は `packages/core`、GAS 薄層は `packages/gas`
+- 最小 UI 用の雛形は `packages/webui`
+
+コマンド例:
+
+```
+npm install
+npm run -w packages/core test
+npm run -w packages/gas build
+```
+
+CI（GitHub Actions）は push/PR 時に lint/test/build を実行します。
+
+## 🚀 GAS デプロイ（最小）
+
+```
+cd apps-script
+clasp login
+clasp push
+clasp deploy -d "bootstrap"
+```
+
+apps-script には `dist/Code.js`（`packages/gas` からビルド）と `views/*.html` を配置します。
