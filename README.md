@@ -27,6 +27,23 @@ Google Apps Script 製の Web アプリ。スプレッドシートに **多段�
 
 > 旧 `?page=csv_converter` は削除しました（`?page=test_csv` を利用）。
 
+## 🧪 段階テストルート（STRUCTURE→CSV→JSON→HTML / Form⇄DATA）
+
+以下は tasks/001_taksk.md に基づく段階テスト用のページです。既存ページは保持されます。
+
+- S1: `?page=test_structure_to_csv`：STRUCTURE を CSV で `<pre>` 表示
+- S2: `?page=test_csv_to_json`：CSV→フィールド配列 JSON を `<pre>` 表示
+- S3: `?page=test_json_to_form`：JSON→フォーム HTML を表示（空の初期値）
+- ワンショット: `?page=reception_from_structure`：S1→S2→S3 を直列実行しフォーム表示
+- 編集: `?page=reception_edit&row=2`：DATA 2行目→JSON 復元→フォーム初期値に反映
+
+受け入れ確認（抜粋）
+- S1: CSV が表示される
+- S2: フィールド配列 JSON が表示される
+- S3: input/textarea/select がDOMに出現
+- F1: `reception_from_structure` から送信で `DATA` シートに1行追記
+- F2: `reception_edit&row=N` で該当行の内容が初期値に反映
+
 ## 🗂️ ファイル構成（抜粋）
 
 ```

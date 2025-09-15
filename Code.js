@@ -9,6 +9,21 @@
 const STRUCTURE_SHEET_NAME = 'STRUCTURE';
 const MAX_STRUCTURE_COLS = 9;
 
+// === Staged pipeline constants (S1/S2/S3, F1/F2) ===
+// 10行ヘッダー前提: 1行目=型, 2-10行目=L1..L9
+const HEADER_ROWS = 10;
+// DATAシート名（新パイプライン用）
+const DATA_SHEET_NAME = 'DATA';
+// type→入力UIの簡易対応
+const TYPE_TO_WIDGET = {
+  'TEXT': 'text',
+  'TEXTAREA': 'textarea',
+  'NUMBER': 'number',
+  'DATE': 'date',
+  'EXISTENCE': 'checkbox',
+  'LIST': 'select'
+};
+
 // Webアプリのメインページを表示
 function doGet(e) {
   // パラメータが存在しない場合のエラーハンドリング
@@ -77,6 +92,38 @@ function doGet(e) {
       .evaluate()
       .setTitle('🧪 CSV to JSON 変換テスト')
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  }
+
+  // === New staged testing routes (S1/S2/S3, F1/F2) ===
+  if (page === 'test_structure_to_csv') {
+    const csv = structureToCsv_();
+    return HtmlService.createHtmlOutput('<pre>' + escHtml_(csv) + '</pre>')
+      .setTitle('🧪 S1: STRUCTURE → CSV');
+  }
+  if (page === 'test_csv_to_json') {
+    const json = csvToJson_(structureToCsv_());
+    return HtmlService.createHtmlOutput('<pre>' + escHtml_(JSON.stringify(json, null, 2)) + '</pre>')
+      .setTitle('🧪 S2: CSV → JSON');
+  }
+  if (page === 'test_json_to_form') {
+    const json = csvToJson_(structureToCsv_());
+    const html = jsonToReceptionHtml_(json, {});
+    return HtmlService.createHtmlOutput(html)
+      .setTitle('🧪 S3: JSON → HTML');
+  }
+  if (page === 'reception_from_structure') {
+    const json = csvToJson_(structureToCsv_());
+    const html = jsonToReceptionHtml_(json, {});
+    return HtmlService.createHtmlOutput(html)
+      .setTitle('📝 受付（STRUCTUREベース）');
+  }
+  if (page === 'reception_edit') {
+    const rowIndex = Number(e.parameter.row || '2');
+    const initial = getReceptionJsonByRow_(rowIndex);
+    const json = csvToJson_(structureToCsv_());
+    const html = jsonToReceptionHtml_(json, initial);
+    return HtmlService.createHtmlOutput(html)
+      .setTitle('📝 受付編集');
   }
   
   const t = HtmlService.createTemplateFromFile('views/webapp');
@@ -172,6 +219,190 @@ function isFeatureEnabled_(key, defaultVal) {
   } catch (_e) {
     return !!defaultVal;
   }
+}
+
+// ======= 共通ユーティリティ（Sパイプライン/F I/O用） =======
+const escHtml_ = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const joinPath_ = (a) => (a || []).filter(Boolean).join('.');
+function flattenJson_(obj, prefix = '', out = {}) {
+  for (const [k, v] of Object.entries(obj || {})) {
+    const key = prefix ? prefix + '.' + k : k;
+    if (v && typeof v === 'object' && !Array.isArray(v)) flattenJson_(v, key, out);
+    else out[key] = v;
+  }
+  return out;
+}
+function setByPath_(obj, segs, val) {
+  let cur = obj;
+  for (let i = 0; i < segs.length; i++) {
+    const k = segs[i];
+    if (i === segs.length - 1) cur[k] = val;
+    else { cur[k] = cur[k] || {}; cur = cur[k]; }
+  }
+}
+
+// ======= S1: STRUCTURE → CSV =======
+function structureToCsv_() {
+  const sh = SpreadsheetApp.getActive().getSheetByName(STRUCTURE_SHEET_NAME);
+  if (!sh) throw new Error('STRUCTUREシートが見つかりません');
+  const lastCol = sh.getLastColumn();
+  const header = sh.getRange(1, 1, HEADER_ROWS, lastCol).getValues(); // [10 x N]
+
+  const rows = [];
+  for (let col = 0; col < lastCol; col++) {
+    const type = header[0][col] || '';
+    const levels = [];
+    for (let r = 1; r < HEADER_ROWS; r++) levels.push(header[r][col] || '');
+    rows.push([type, ...levels]); // 10列
+  }
+
+  const lines = rows.map(r =>
+    r.map(v => {
+      const s = String(v ?? '');
+      const needsQuote = (s.indexOf('"') !== -1) || (s.indexOf(',') !== -1) || (s.indexOf('\n') !== -1) || (s.indexOf('\r') !== -1);
+      return needsQuote ? '"' + s.replace(/"/g, '""') + '"' : s;
+    }).join(',')
+  );
+  return lines.join('\n');
+}
+
+// ======= S2: CSV → JSON（フォーム仕様） =======
+// 出力例: [{ type:'TEXT', path:['受付','基本','氏名'], key:'受付.基本.氏名', widget:'text', label:'氏名' }, ...]
+function csvToJson_(csvText) {
+  const rows = Utilities.parseCsv(csvText);
+  const out = [];
+  for (const row of rows) {
+    const type = (row[0] || '').toString().trim().toUpperCase();
+    const path = row.slice(1, HEADER_ROWS).map(x => (x || '').toString().trim()).filter(Boolean);
+    if (!path.length) continue;
+    const key = joinPath_(path);
+    const widget = TYPE_TO_WIDGET[type] || 'text';
+    out.push({ type, path, key, widget, label: path[path.length - 1] });
+  }
+  return out;
+}
+
+// ======= S3: JSON → HTML（受付フォーム生成） =======
+function jsonToReceptionHtml_(fields, initialData) {
+  const getValueByKey = (obj, dottedKey) => {
+    const segs = dottedKey.split('.');
+    let cur = obj || {};
+    for (const s of segs) { if (cur && Object.prototype.hasOwnProperty.call(cur, s)) cur = cur[s]; else return ''; }
+    return (cur == null ? '' : cur);
+  };
+  const controls = fields.map(f => {
+    const id = 'f_' + f.key.replace(/\W+/g, '_');
+    const name = f.key;
+    const label = escHtml_(f.label || f.key);
+    const val = escHtml_(getValueByKey(initialData, f.key));
+    switch (f.widget) {
+      case 'textarea':
+        return '<label class=\"block\"><div>' + label + '</div><textarea name=\"' + name + '\" id=\"' + id + '\">' + val + '</textarea></label>';
+      case 'checkbox': {
+        const checked = (String(val) === 'true' || String(val) === '1') ? ' checked' : '';
+        return '<label class=\"block\"><input type=\"checkbox\" name=\"' + name + '\" id=\"' + id + '\" value=\"true\"' + checked + '/> ' + label + '</label>';
+      }
+      case 'number':
+        return '<label class=\"block\"><div>' + label + '</div><input type=\"number\" name=\"' + name + '\" id=\"' + id + '\" value=\"' + val + '\"/></label>';
+      case 'date':
+        return '<label class=\"block\"><div>' + label + '</div><input type=\"date\" name=\"' + name + '\" id=\"' + id + '\" value=\"' + val + '\"/></label>';
+      case 'select':
+        return '<label class=\"block\"><div>' + label + '</div><select name=\"' + name + '\" id=\"' + id + '\"></select></label>';
+      default:
+        return '<label class=\"block\"><div>' + label + '</div><input type=\"text\" name=\"' + name + '\" id=\"' + id + '\" value=\"' + val + '\"/></label>';
+    }
+  }).join('\n');
+
+  const html = `
+<html><body>
+  <h2>受付フォーム（Structure→CSV→JSON→HTML）</h2>
+  <form id="reception-form" onsubmit="return submitForm(event)">
+    ${controls}
+    <div style="margin-top:12px;">
+      <button type="submit">保存</button>
+    </div>
+  </form>
+  <script>
+    function formToJson_(form){
+      const obj = {};
+      for (const el of form.elements) {
+        if (!el.name) continue;
+        const dotted = el.name;
+        const segs = dotted.split('.');
+        let cur = obj;
+        for (let i=0;i<segs.length;i++){
+          const k = segs[i];
+          if (i === segs.length - 1) {
+            let v = (el.type === 'checkbox') ? el.checked : el.value;
+            cur[k] = v;
+          } else {
+            cur[k] = cur[k] || {};
+            cur = cur[k];
+          }
+        }
+      }
+      return obj;
+    }
+    function submitForm(e){
+      e.preventDefault();
+      const data = formToJson_(document.getElementById('reception-form'));
+      google.script.run
+        .withSuccessHandler(function(){ alert('保存しました'); })
+        .withFailureHandler(function(err){ alert('保存失敗: ' + err); })
+        .saveReceptionDataFromJson(data);
+      return false;
+    }
+  </script>
+</body></html>`;
+  return html;
+}
+
+// ======= F1: JSON → DATAシート（保存） =======
+function saveReceptionDataFromJson(json) {
+  const sh = SpreadsheetApp.getActive().getSheetByName(DATA_SHEET_NAME);
+  if (!sh) throw new Error('DATAシートが見つかりません');
+  const lastCol = sh.getLastColumn();
+  const header = sh.getRange(1, 1, HEADER_ROWS, lastCol).getValues(); // 10xN
+
+  const keyToCol = new Map();
+  for (let c = 0; c < lastCol; c++) {
+    const path = [];
+    for (let r = 1; r < HEADER_ROWS; r++) {
+      const v = header[r][c];
+      if (v) path.push(String(v));
+    }
+    if (path.length) keyToCol.set(joinPath_(path), c + 1); // 1-based
+  }
+
+  const flat = flattenJson_(json);
+  const row = new Array(lastCol).fill('');
+  for (const [k, v] of Object.entries(flat)) {
+    const col = keyToCol.get(k);
+    if (col) row[col - 1] = (v == null) ? '' : v;
+  }
+  // 現段階は新規追加（更新は後段TODO）
+  sh.appendRow(row);
+}
+
+// ======= F2: DATAシート → JSON（指定行を復元） =======
+function getReceptionJsonByRow_(rowIndex) {
+  const sh = SpreadsheetApp.getActive().getSheetByName(DATA_SHEET_NAME);
+  if (!sh) throw new Error('DATAシートが見つかりません');
+  const lastCol = sh.getLastColumn();
+  const header = sh.getRange(1, 1, HEADER_ROWS, lastCol).getValues();
+  const values = sh.getRange(rowIndex, 1, 1, lastCol).getValues()[0];
+
+  const out = {};
+  for (let c = 0; c < lastCol; c++) {
+    const segs = [];
+    for (let r = 1; r < HEADER_ROWS; r++) {
+      const v = header[r][c];
+      if (v) segs.push(String(v));
+    }
+    if (!segs.length) continue;
+    setByPath_(out, segs, values[c]);
+  }
+  return out;
 }
 
 
